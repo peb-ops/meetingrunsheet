@@ -82,7 +82,7 @@ function renderTimer() {
   const last = timer.index === timer.items.length - 1;
   $("#tNext").disabled = last;
   $("#tNext").textContent = last ? "Last item" : "Next item";
-  document.title = `${itemText} · ${item.title}`;
+  document.title = `${itemText} \u00b7 ${item.title}`;
 }
 
 $("#timerBtn").onclick = startTimer;
