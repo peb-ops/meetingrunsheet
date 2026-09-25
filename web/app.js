@@ -26,7 +26,8 @@ const typeName = key => (TYPES[key] || TYPES.general)[0];
 
 let state = blank();
 let dirty = false;
-let pending = null;   // callback waiting on the inline confirm bar
+let pending = null;     // callback for "yes" on the inline confirm bar
+let pendingNo = null;   // optional callback for "no"
 let listTimer = null;
 const knownMeetings = {};   // id -> summary from the last list load, for "Follow-up of ..." links
 
@@ -68,12 +69,20 @@ function setStatus() {
 function markDirty() {
   dirty = true;
   setStatus();
+  storeDraft();
 }
 
-function ask(message, yesLabel, fn) {
+// Call after the page matches what's saved (or the user chose to throw changes away).
+function markClean() {
+  dirty = false;
+  clearDraft();
+}
+
+function ask(message, yesLabel, fn, onNo) {
   $("#confirmMsg").textContent = message;
   $("#confirmYes").textContent = yesLabel;
   pending = fn;
+  pendingNo = onNo || null;
   $("#confirmBox").hidden = false;
   $("#confirmYes").focus();
 }
@@ -385,7 +394,7 @@ async function openMeeting(id) {
       checks: migrateChecks(m.checks),
       actions,
     };
-    dirty = false;
+    markClean();
     renderAll();
     window.scrollTo(0, 0);
   } catch (e) {
@@ -406,7 +415,7 @@ async function save() {
       : await api("POST", "/api/meetings", body);
     state.id = m.id;
     state.savedAt = m.savedAt;
-    dirty = false;
+    markClean();
     setStatus();
     toast("Saved");
     loadList();
@@ -417,7 +426,7 @@ async function save() {
 
 function newMeeting() {
   state = blank();
-  dirty = false;
+  markClean();
   renderAll();
   $("#f-title").focus();
 }
@@ -429,8 +438,8 @@ function followUp() {
   FOLLOW_UP_FIELDS.forEach(k => { if (state.fields[k]) fields[k] = state.fields[k]; });
   const open = state.actions.filter(a => a.a && !a.done && !a.carried).map(a => Object.assign({}, a));
   state = { id: null, follows: state.id, fields, checks: {}, actions: open.length ? open : [blankAction()] };
-  dirty = true;
   renderAll();
+  markDirty();
   toast(open.length ? `Carried over ${open.length} open action${open.length > 1 ? "s" : ""}` : "Brief copied to a new meeting");
 }
 
@@ -438,7 +447,7 @@ async function deleteMeeting() {
   try {
     await api("DELETE", "/api/meetings/" + state.id);
     state = blank();
-    dirty = false;
+    markClean();
     renderAll();
     loadList();
     toast("Meeting deleted");
@@ -494,6 +503,38 @@ function copyNotes() {
   } catch (e) {
     fallback();
   }
+}
+
+/* ---- Local draft: unsaved work survives a browser crash or a closed server window ---- */
+
+// Kept in this browser only (localStorage), never sent to the server. One draft at a time.
+const DRAFT_KEY = "runsheet-draft";
+let draftTimer = null;
+
+function storeDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: new Date().toISOString(), state })); } catch (e) {}
+  }, 500);
+}
+
+function clearDraft() {
+  clearTimeout(draftTimer);
+  try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+}
+
+// On page load: offer to bring back unsaved work from last time.
+function offerDraft() {
+  let draft = null;
+  try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); } catch (e) {}
+  if (!draft || !draft.state || !draft.state.fields) return;
+  const title = draft.state.fields.title || "Untitled meeting";
+  const when = new Date(draft.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  ask(`Unsaved changes to "${title}" from ${when} were found. Restore them?`, "Restore", () => {
+    state = Object.assign(blank(), draft.state, { checks: migrateChecks(draft.state.checks) });
+    renderAll();
+    markDirty();
+  }, clearDraft);
 }
 
 /* ---- Help tooltips ---- */
@@ -557,12 +598,14 @@ FIELDS.forEach(f => {
 
 $("#confirmNo").onclick = () => {
   $("#confirmBox").hidden = true;
-  pending = null;
+  const fn = pendingNo;
+  pending = pendingNo = null;
+  if (fn) fn();
 };
 $("#confirmYes").onclick = () => {
   $("#confirmBox").hidden = true;
   const fn = pending;
-  pending = null;
+  pending = pendingNo = null;
   if (fn) fn();
 };
 
@@ -595,3 +638,4 @@ setupHelp();
 fillTypeOptions();
 renderAll();
 loadList();
+offerDraft();
