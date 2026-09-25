@@ -42,3 +42,18 @@
 - `web/content.js`, `CLAUDE.md`: comments and docs point to `data-help`; v1.1.2 history entry.
 - Checked in headless Edge against test servers (ports 8097/8098, data in %TEMP%): 7 help rows, 7 described inputs, 19 checklist items, 8 types; screenshots at 1280px and narrow with a tooltip pinned; no horizontal overflow at 420/700/1280 after the fix. `node --check` passes; web files ASCII. Real `meetings\` still empty and untouched.
 - Not tested: real mouse hover and touch; the tooltip only rendered in the pinned (clicked) state.
+
+## 2026-09-25 (v1.2.0: facilitator improvements, git, tests)
+
+- Git: `git init` on `main`, repo-local author peb5588 (GitHub noreply email), `.gitignore` (meetings/, test-data/, *.tmp, .claude/settings.local.json). One commit per item below; `git log --oneline` lists them.
+- Stable checklist ids (`web/content.js`, `web/app.js`): items are `[id, title, description]`; ticks save as `before:needs-meeting`; old positional keys are translated via `LEGACY_CHECKS` (v1.0 order).
+- Agenda check (`app.js`, `index.html`, `styles.css`): `parseAgenda()` reads "Item (N min)" lines; a line under the agenda shows the total vs the timebox and items missing minutes.
+- Weak actions (`app.js`, `styles.css`, `lib/MeetingStore.psm1`): open actions missing an owner or due date get a dashed amber outline; overdue dates are red; the list API returns `overdueActions` and the sidebar shows "N overdue".
+- Carried actions (`lib/MeetingStore.psm1`, `lib/RunSheetServer.psm1`, `app.js`, `index.html`, `styles.css`): action ids; follow-ups store `follows`; the store syncs `carried` on the original on every save and releases on delete (`Create/Update/Remove` replace direct `Save/Delete` in the router). Carried rows are read-only with a link to the follow-up; the follow-up links back.
+- Meeting timer (new `web/timer.js`, `index.html`, `styles.css`): Start meeting button and sticky bar.
+- Local draft (`app.js`): localStorage `runsheet-draft`, offered on load via the confirm bar (`ask()` got an `onNo` callback, `markClean()` added).
+- Tests (new `tests/Run-Tests.ps1`): 45 checks, all passing on 5.1, including headless Edge render. Page behaviour was also checked with a temporary browser harness (18/18: agenda warning, flags, timer warn/over/next, draft store/restore, follow-up link, carried rows, badges, notes) plus screenshots at desktop and narrow widths; the harness wasn't kept.
+- `CLAUDE.md`: files, test command, API, data format (`checks` ids, `actions[].id`, `carried`, `follows`), features, rule to run tests before committing, v1.2.0 history.
+- Different from plan: tests are plain PowerShell, not Pester (Windows ships Pester 3.4; installing 5 breaks the no-installs rule). A literal middle dot slipped into `timer.js` and was replaced with `·`.
+- Not tested: PowerShell 7 (not installed), real mouse hover/touch, and the Ctrl+C path after these changes (the server loop is unchanged).
+- The real `meetings\` folder is still empty and was not touched.

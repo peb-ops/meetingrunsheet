@@ -6,14 +6,18 @@ script serves a checklist web page on localhost and stores each meeting as a JSO
 ## Files
 
 - `MeetingRunSheet.ps1` - entry point only: params, path resolution, wires the classes together, startup banner.
-- `lib\MeetingStore.psm1` - class `MeetingStore`: list/read/save/delete meeting JSON files, id validation.
+- `lib\MeetingStore.psm1` - class `MeetingStore`: list/read/create/update/remove meeting JSON files, id validation,
+  and follow-up "carried" sync (see Data format).
 - `lib\WebRoot.psm1` - class `WebRoot`: serves files from `web\` (extension whitelist, path-traversal guard).
 - `lib\RunSheetServer.psm1` - class `RunSheetServer`: `HttpListener`, Host/CSRF guards, routing, API, Ctrl+C-friendly loop.
 - `web\index.html` (markup), `web\styles.css` (theme + layout), `web\content.js` (`PHASES` checklist and
-  `TYPES` tips, data only), `web\app.js` (page behaviour). Read from disk on every request with
+  `TYPES` tips, data only), `web\app.js` (page behaviour), `web\timer.js` (meeting timer bar; loads after
+  app.js and uses its globals). Classic scripts sharing globals, no modules or build step. Read from disk on every request with
   `Cache-Control: no-store`, so UI edits need only a browser refresh, not a server restart.
 - `Start-RunSheet.cmd` - double-click launcher; runs the script with `-ExecutionPolicy Bypass` and passes arguments through.
-- `meetings\*.json` - user data, created on first run. Never delete or rewrite these while developing.
+- `tests\Run-Tests.ps1` - dependency-free test suite (see Run).
+- `meetings\*.json` - user data, created on first run, git-ignored. Never delete or rewrite these while developing.
+- Git repo on branch `main`, one commit per change. Author is set per repo (user.name peb5588).
 
 ## Run
 
@@ -27,6 +31,13 @@ Stop with Ctrl+C (the loop waits on `GetContextAsync()` in 250 ms slices so Ctrl
 
 When testing, always use a separate `-DataDir` and a non-default port so the user's real meetings are untouched.
 
+Tests start their own server on port 8199 with a temp data folder, and check the page render too if Edge is installed:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1   # run before every commit
+pwsh -NoProfile -File .\tests\Run-Tests.ps1                                # same on PowerShell 7
+```
+
 ## API
 
 All JSON. Non-GET requests must send header `X-Run-Sheet: 1` (CSRF guard). Host header must be localhost/127.0.0.1.
@@ -34,9 +45,9 @@ All JSON. Non-GET requests must send header `X-Run-Sheet: 1` (CSRF guard). Host 
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/`, `/<file>` | page files from `web\` (`/` = `index.html`); only .html .css .js .json .svg .png .ico |
-| GET | `/api/meetings?q=` | summaries `{id,title,date,type,savedAt,openActions}`, newest first; `q` = case-insensitive substring of raw file text |
-| POST | `/api/meetings` | create, returns meeting with new `id` (201) |
-| GET/PUT/DELETE | `/api/meetings/{id}` | id must match `^[A-Za-z0-9-]{1,64}$` |
+| GET | `/api/meetings?q=` | summaries `{id,title,date,type,savedAt,openActions,overdueActions}`, newest first; `q` = case-insensitive substring of raw file text |
+| POST | `/api/meetings` | create, returns meeting with new `id` (201); if it has `follows`, syncs `carried` in that meeting |
+| GET/PUT/DELETE | `/api/meetings/{id}` | id must match `^[A-Za-z0-9-]{1,64}$`; PUT syncs `carried` like POST, DELETE releases it |
 
 ## Data format
 
@@ -45,26 +56,40 @@ All JSON. Non-GET requests must send header `X-Run-Sheet: 1` (CSRF guard). Host 
   "fields": { "title": "", "type": "triage", "date": "2026-09-25", "length": "30", "goal": "",
               "decider": "", "notetaker": "", "attendees": "", "agenda": "",
               "decisions": "", "parking": "", "reflect": "" },
-  "checks": { "before-0": true },
-  "actions": [ { "a": "action", "o": "owner", "d": "2026-10-02", "t": "GAME-123", "done": false } ],
+  "checks": { "before:needs-meeting": true },
+  "actions": [ { "id": "mfz3k2a9x1q", "a": "action", "o": "owner", "d": "2026-10-02", "t": "GAME-123", "done": false,
+                 "carried": "20260930-100000-9c1e2f" } ],
+  "follows": "20260918-140000-1a2b3c",
   "id": "20260925-150845-216bb6",
   "savedAt": "2026-09-25T15:08:45"
 }
 ```
 
 - `fields.type`: general, kickoff, planning, triage, playtest, design, milestone, retro (keys of `TYPES` in `web\content.js`).
-- `checks` keys are `<phase>-<index>` into `PHASES` in `web\content.js`, so they are positional:
-  append new checklist items at the end of a phase, never insert in the middle.
-  (The v1.1.1 reshuffle was only safe because no meetings had been saved yet.)
+- `checks` keys are `<phase id>:<item id>` from `PHASES` in `web\content.js`. Items can be reordered or removed;
+  never rename an item id or reuse an old one. Pre-v1.2.0 positional keys (`before-0`) are translated on open
+  by `LEGACY_CHECKS` in `app.js` (v1.0 order).
+- `actions[].id` is generated by the page and stays the same when an action is carried into a follow-up.
+  Files from before v1.2.0 have none; the page adds ids on open.
+- `follows` (optional): id of the meeting this one follows up. On every save of a follow-up, the store sets
+  `carried: <follow-up id>` on the original's matching open actions and removes it from ones no longer in the
+  follow-up; deleting the follow-up releases all. This write does not change the original's `savedAt`.
+- Open action = has text, not `done`, not `carried`. Overdue = open with `d` before today.
 - The page tolerates unknown `type` values (e.g. old `standup`) by falling back to General.
 - `id` and `savedAt` are set by the server. Files are written temp-then-move, UTF-8 without BOM.
 
 ## Page features
 
-Sidebar list with search and open-action badges; brief (with per-type tips); Before/During/After
-checklists with progress; decisions, parking lot, action table with Done checkbox; self-review.
-Buttons: New, Save (Ctrl+S), Copy notes (plain-text summary), Follow-up meeting (copies brief,
-today's date, carries over open actions), Delete (inline confirm, no browser dialogs).
+Sidebar list with search and "N open" / "N overdue" badges; brief (with per-type tips); agenda check under
+the agenda (sums "Item (N min)" lines vs the timebox, flags items without minutes); Before/During/After
+checklists with progress; decisions, parking lot, action table with Done checkbox (open actions missing an
+owner or due date get a dashed amber outline, overdue dates are red, carried rows are read-only with a link
+to the follow-up); self-review.
+Buttons: Start meeting (sticky timer bar: countdown for the current agenda item, amber near the end, red when
+over, Next item, meeting total vs timebox, time left in the tab title; not saved), New, Save (Ctrl+S), Copy
+notes (plain-text summary), Follow-up meeting (copies brief, today's date, carries over open actions, links
+back to the original), Delete (inline confirm, no browser dialogs).
+Unsaved work is kept as a draft in localStorage (`runsheet-draft`) and offered for restore on the next load.
 Field advice lives in `data-help` on the label and shows as a (?) tooltip (hover, or click/tap to pin; Esc closes);
 placeholders hold only short examples, because they get cut off and vanish once you type.
 Warns on unsaved changes. Light and dark themes via `prefers-color-scheme`. No external resources (works offline).
@@ -82,6 +107,7 @@ Warns on unsaved changes. Light and dark themes via `prefers-color-scheme`. No e
 - No dependencies, installs, or admin rights. Bind to localhost only.
 - Methods/functions returning arrays: wrap calls in `@()` before `ConvertTo-Json -InputObject` so 0/1 items stay arrays.
 - Preserve compatibility with existing meeting JSON files.
+- Run `tests\Run-Tests.ps1` on 5.1 before committing, and add checks for new API behaviour.
 
 ## History
 
@@ -94,8 +120,13 @@ Warns on unsaved changes. Light and dark themes via `prefers-color-scheme`. No e
   facilitator could forget; if a field exists for it, put the advice on that field (now its `data-help` tooltip).
 - v1.1.2 - field advice moved from placeholders to (?) tooltips (`data-help` + `setupHelp()`); agenda example now
   "Item (N min)"; fixed the Record section overflowing the window below ~640px (action table min-width).
+- v1.2.0 - git repo; stable checklist ids (with legacy mapping); agenda vs timebox check; weak/overdue action
+  flags and `overdueActions`; follow-ups mark carried actions in the original (`follows`, `carried`, action ids,
+  `MeetingStore.Create/Update/Remove`); meeting timer (`web\timer.js`); localStorage draft restore;
+  `tests\Run-Tests.ps1` (45 checks). PowerShell 7 still untested (not installed on the dev machine).
 
 ## Ideas not yet built
 
-Cross-meeting "open actions" view in the page, CSV export, Jira/ticket links, due-date reminders,
-and a Pester test suite.
+Cross-meeting "open actions" view in the page (easier now that actions have ids), CSV export, Jira/ticket
+links, due-date reminders, keeping the timer running across a page reload.
+Tests are plain PowerShell on purpose: Windows ships Pester 3.4, and installing Pester 5 would break the no-installs rule.
