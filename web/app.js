@@ -101,6 +101,41 @@ function showTip() {
   tip.append(b, document.createTextNode(tipText));
 }
 
+/* ---- Agenda: "Item (N min)" lines ---- */
+
+// Returns [{ title, min }] for each non-empty line. min is null when the line has no minutes.
+// Accepts "(15 min)", "15 min", "15m" or "15 minutes" at the end of the line, and ignores "1." numbering.
+function parseAgenda(text) {
+  return (text || "").split("\n").map(line => line.trim()).filter(Boolean).map(line => {
+    const m = /\(?\s*(\d+)\s*(?:m|min|mins|minutes)\s*\)?\s*$/i.exec(line);
+    const title = (m ? line.slice(0, m.index) : line).replace(/^\d+[.)]\s*/, "").replace(/[\s-]+$/, "");
+    return { title: title || line, min: m ? +m[1] : null };
+  });
+}
+
+// The line under the agenda: total minutes against the timebox, and items missing minutes.
+function showAgendaSum() {
+  const box = $("#agendaSum");
+  const items = parseAgenda(state.fields.agenda);
+  box.hidden = !items.length;
+  if (!items.length) return;
+
+  const total = items.reduce((sum, it) => sum + (it.min || 0), 0);
+  const missing = items.filter(it => it.min === null).length;
+  const timebox = +state.fields.length || 0;
+  let msg, warn = false;
+  if (!timebox) msg = `Agenda adds up to ${total} min. Set a timebox to check it.`;
+  else if (total > timebox) { msg = `Agenda is ${total} min but the timebox is ${timebox}. Cut or shorten items.`; warn = true; }
+  else if (total < timebox) msg = `Agenda is ${total} of ${timebox} min: ${timebox - total} min spare.`;
+  else msg = `Agenda fits the timebox: ${total} of ${timebox} min.`;
+  if (missing) {
+    msg += ` ${missing} item${missing > 1 ? "s have" : " has"} no minutes, e.g. "Review crashes (15 min)".`;
+    warn = true;
+  }
+  box.textContent = msg;
+  box.classList.toggle("warn", warn);
+}
+
 /* ---- Render: checklist ---- */
 
 // Saved tick key for a checklist item, e.g. "before:needs-meeting".
@@ -218,6 +253,7 @@ function renderAll() {
   FIELDS.forEach(f => { $("#f-" + f).value = state.fields[f] ?? ""; });
   if (!typeSel.value) typeSel.value = "general";
   showTip();
+  showAgendaSum();
   renderPhases();
   renderActions();
   setStatus();
@@ -452,6 +488,7 @@ FIELDS.forEach(f => {
     state.fields[f] = el.value;
     markDirty();
     if (f === "type") showTip();
+    if (f === "agenda" || f === "length") showAgendaSum();
   });
 });
 

@@ -73,6 +73,8 @@ header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-be
 .help-tip{display:none;position:absolute;left:0;top:calc(100% + 6px);z-index:4;width:max-content;max-width:min(340px,100%);background:var(--ink);color:var(--bg);padding:8px 10px;border-radius:6px;font-size:13px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 .help:hover + .help-tip,.label-row.open .help-tip{display:block}
 .label-row.open .help{border-color:var(--accent);color:var(--accent)}
+.agenda-sum{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.agenda-sum.warn{color:var(--warn)}
 .tip{grid-column:1/-1;background:var(--accent-soft);border-radius:6px;padding:10px 12px;font-size:14px}
 .tip b{font-family:var(--display);text-transform:uppercase;letter-spacing:.04em;margin-right:6px}
 
