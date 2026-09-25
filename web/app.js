@@ -103,6 +103,28 @@ function showTip() {
 
 /* ---- Render: checklist ---- */
 
+// Saved tick key for a checklist item, e.g. "before:needs-meeting".
+const checkKey = (phase, itemId) => `${phase.id}:${itemId}`;
+
+// Files saved before v1.2.0 keyed ticks by position ("before-0") in the v1.0 checklist order.
+// null = that item was removed (its advice now lives in a form field's tooltip).
+const LEGACY_CHECKS = {
+  before: ["needs-meeting", null, null, "trim-invites", null, "send-agenda", "prep-room", null],
+  during: ["start-on-time", "state-goal", "keep-time", "park-tangents", "quiet-voices", "stay-neutral", "call-decision", "call-decision", "read-back", "end-on-time"],
+  after:  ["send-notes", "log-actions", "update-docs", "parking-followup", "check-actions", null],
+};
+
+function migrateChecks(checks) {
+  const out = {};
+  Object.entries(checks || {}).forEach(([key, on]) => {
+    const m = /^(before|during|after)-(\d+)$/.exec(key);
+    if (!m) { out[key] = on; return; }
+    const itemId = (LEGACY_CHECKS[m[1]] || [])[+m[2]];
+    if (itemId && on) out[`${m[1]}:${itemId}`] = true;
+  });
+  return out;
+}
+
 function renderPhases() {
   const wrap = $("#phases");
   wrap.innerHTML = "";
@@ -113,8 +135,8 @@ function renderPhases() {
       + `<div class="bar" id="b-${p.id}"><i></i></div><ul class="checks"></ul>`;
     const ul = sec.querySelector("ul");
 
-    p.items.forEach(([title, desc], i) => {
-      const id = `${p.id}-${i}`;
+    p.items.forEach(([itemId, title, desc]) => {
+      const id = checkKey(p, itemId);
       const li = document.createElement("li");
       li.innerHTML = `<label for="chk-${id}"><input type="checkbox" id="chk-${id}"><span><span class="t"></span><span class="d"></span></span></label>`;
       li.querySelector(".t").textContent = title;
@@ -137,7 +159,7 @@ function renderPhases() {
 function updateCounts() {
   PHASES.forEach(p => {
     const total = p.items.length;
-    const done = p.items.filter((_, i) => state.checks[`${p.id}-${i}`]).length;
+    const done = p.items.filter(([itemId]) => state.checks[checkKey(p, itemId)]).length;
     const full = done === total;
     const count = $("#c-" + p.id);
     const bar = $("#b-" + p.id);
@@ -263,7 +285,7 @@ async function openMeeting(id) {
       id: m.id || id,
       savedAt: m.savedAt,
       fields: m.fields || {},
-      checks: m.checks || {},
+      checks: migrateChecks(m.checks),
       actions: (m.actions && m.actions.length) ? m.actions : [blankAction()],
     };
     dirty = false;
