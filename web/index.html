@@ -18,10 +18,19 @@
   </aside>
 
   <main>
+    <!-- Meeting timer (timer.js): shown while a meeting is running -->
+    <div class="timer" id="timerBar" hidden>
+      <div class="timer-now"><span class="label">Now <span id="tItemNo"></span></span><b id="tItem"></b></div>
+      <div class="timer-clock" id="tItemLeft"></div>
+      <div class="timer-total"><span class="label">Meeting</span> <span id="tTotal"></span></div>
+      <div class="toolbar"><button id="tNext">Next item</button><button id="tStop">Stop</button></div>
+    </div>
+
     <header>
       <h1>Meeting Run Sheet</h1>
       <div class="toolbar">
         <span class="status" id="status">New meeting</span>
+        <button id="timerBtn" title="Run the agenda with a clock">Start meeting</button>
         <button class="primary" id="saveBtn" title="Ctrl+S">Save</button>
         <button id="copyBtn">Copy notes</button>
         <button id="followBtn" title="New meeting with the same brief and any open actions">Follow-up meeting</button>
@@ -85,5 +94,6 @@
 
 <script src="content.js"></script>
 <script src="app.js"></script>
+<script src="timer.js"></script>
 </body>
 </html>
