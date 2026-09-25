@@ -14,6 +14,7 @@ using module .\WebRoot.psm1
 #   GET    /api/meetings/{id}  read
 #   PUT    /api/meetings/{id}  update
 #   DELETE /api/meetings/{id}  delete
+# Saving or deleting a follow-up also updates "carried" on its original meeting (see MeetingStore).
 
 class RunSheetServer {
     [int] $Port
@@ -95,7 +96,7 @@ class RunSheetServer {
         if ($path -eq '/api/meetings') {
             switch ($method) {
                 'GET'  { $this.SendJson($ctx, @($this.Store.List($req.QueryString['q'])), 200); return }
-                'POST' { $this.SendJson($ctx, $this.Store.Save($this.ReadBody($req), ''), 201); return }
+                'POST' { $this.SendJson($ctx, $this.Store.Create($this.ReadBody($req)), 201); return }
             }
         }
 
@@ -107,8 +108,8 @@ class RunSheetServer {
             }
             switch ($method) {
                 'GET'    { $this.SendRaw($ctx, 200, $this.Store.ReadRaw($id)); return }
-                'PUT'    { $this.SendJson($ctx, $this.Store.Save($this.ReadBody($req), $id), 200); return }
-                'DELETE' { $this.Store.Delete($id); $this.SendJson($ctx, @{ deleted = $id }, 200); return }
+                'PUT'    { $this.SendJson($ctx, $this.Store.Update($this.ReadBody($req), $id), 200); return }
+                'DELETE' { $this.Store.Remove($id); $this.SendJson($ctx, @{ deleted = $id }, 200); return }
             }
         }
 

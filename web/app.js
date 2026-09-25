@@ -18,14 +18,17 @@ function today() {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
 }
-const blankAction = () => ({ a: "", o: "", d: "", t: "", done: false });
-const blank = () => ({ id: null, fields: { type: "general", date: today() }, checks: {}, actions: [blankAction()] });
+// Action ids stay the same when an action is carried into a follow-up meeting.
+const newActionId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const blankAction = () => ({ id: newActionId(), a: "", o: "", d: "", t: "", done: false });
+const blank = () => ({ id: null, follows: null, fields: { type: "general", date: today() }, checks: {}, actions: [blankAction()] });
 const typeName = key => (TYPES[key] || TYPES.general)[0];
 
 let state = blank();
 let dirty = false;
 let pending = null;   // callback waiting on the inline confirm bar
 let listTimer = null;
+const knownMeetings = {};   // id -> summary from the last list load, for "Follow-up of ..." links
 
 /* ---- Server API ---- */
 
@@ -208,10 +211,10 @@ function updateCounts() {
 /* ---- Render: action items ---- */
 
 // Every open action needs one owner and a due date; past-due open actions are overdue.
-const isOverdue = row => !!(row.d && !row.done && row.d < today());
+const isOverdue = row => !!(row.d && !row.done && !row.carried && row.d < today());
 
 function flagAction(tr, row) {
-  const open = !!(row.a && row.a.trim()) && !row.done;
+  const open = !!(row.a && row.a.trim()) && !row.done && !row.carried;
   const flag = (k, on, why) => {
     const input = tr.querySelector(`[data-k="${k}"]`);
     input.classList.toggle("missing", on);
@@ -258,8 +261,9 @@ function renderActions() {
       markDirty();
     };
     flagAction(tr, row);
+    if (row.carried) showCarried(tr, row);
 
-    tr.querySelector("button").onclick = () => {
+    tr.querySelector("td.x button").onclick = () => {
       state.actions.splice(i, 1);
       if (!state.actions.length) state.actions.push(blankAction());
       markDirty();
@@ -270,10 +274,37 @@ function renderActions() {
   });
 }
 
+// A row that was carried into a follow-up meeting: read-only here, with a link to where it lives now.
+function showCarried(tr, row) {
+  tr.classList.add("carried");
+  tr.querySelectorAll("input").forEach(input => { input.readOnly = true; });
+  const go = document.createElement("button");
+  go.className = "carried-link";
+  go.innerHTML = "&#8618;";
+  go.title = "Carried to a follow-up meeting. Click to open it.";
+  go.setAttribute("aria-label", go.title);
+  go.onclick = () => guard(() => openMeeting(row.carried));
+  tr.querySelector("td.c").replaceChildren(go);
+}
+
+// "Follow-up of <meeting>" under the brief heading, linking back to the original.
+function showFollows() {
+  const line = $("#followsLine");
+  line.hidden = !state.follows;
+  if (!state.follows) return;
+  const m = knownMeetings[state.follows];
+  const link = document.createElement("button");
+  link.className = "link";
+  link.textContent = m ? [m.title || "Untitled meeting", m.date].filter(Boolean).join(", ") : "the previous meeting";
+  link.onclick = () => guard(() => openMeeting(state.follows));
+  line.replaceChildren(document.createTextNode("Follow-up of "), link);
+}
+
 function renderAll() {
   FIELDS.forEach(f => { $("#f-" + f).value = state.fields[f] ?? ""; });
   if (!typeSel.value) typeSel.value = "general";
   showTip();
+  showFollows();
   showAgendaSum();
   renderPhases();
   renderActions();
@@ -294,8 +325,12 @@ async function loadList() {
       list.innerHTML = `<div class="empty">${msg}</div>`;
       return;
     }
-    items.forEach(m => list.appendChild(listItem(m)));
+    items.forEach(m => {
+      knownMeetings[m.id] = m;
+      list.appendChild(listItem(m));
+    });
     highlight();
+    showFollows();
   } catch (e) {
     const d = document.createElement("div");
     d.className = "empty";
@@ -340,12 +375,15 @@ function highlight() {
 async function openMeeting(id) {
   try {
     const m = await api("GET", "/api/meetings/" + encodeURIComponent(id));
+    const actions = (m.actions && m.actions.length) ? m.actions : [blankAction()];
+    actions.forEach(a => { if (!a.id) a.id = newActionId(); });   // files from before v1.2.0
     state = {
       id: m.id || id,
       savedAt: m.savedAt,
+      follows: m.follows || null,
       fields: m.fields || {},
       checks: migrateChecks(m.checks),
-      actions: (m.actions && m.actions.length) ? m.actions : [blankAction()],
+      actions,
     };
     dirty = false;
     renderAll();
@@ -360,6 +398,7 @@ async function save() {
     fields: state.fields,
     checks: state.checks,
     actions: state.actions.filter(a => a.a || a.o || a.d || a.t),   // drop empty rows
+    follows: state.follows || undefined,
   };
   try {
     const m = state.id
@@ -384,11 +423,12 @@ function newMeeting() {
 }
 
 // New unsaved meeting with the same brief, today's date and the open actions carried over.
+// When it's saved, the server marks those actions "carried" in this meeting (see MeetingStore.psm1).
 function followUp() {
   const fields = { date: today() };
   FOLLOW_UP_FIELDS.forEach(k => { if (state.fields[k]) fields[k] = state.fields[k]; });
-  const open = state.actions.filter(a => a.a && !a.done).map(a => Object.assign({}, a));
-  state = { id: null, fields, checks: {}, actions: open.length ? open : [blankAction()] };
+  const open = state.actions.filter(a => a.a && !a.done && !a.carried).map(a => Object.assign({}, a));
+  state = { id: null, follows: state.id, fields, checks: {}, actions: open.length ? open : [blankAction()] };
   dirty = true;
   renderAll();
   toast(open.length ? `Carried over ${open.length} open action${open.length > 1 ? "s" : ""}` : "Brief copied to a new meeting");
@@ -431,7 +471,7 @@ function notes() {
   o += `\nDECISIONS\n${decisions.length ? bullets(decisions) : "- None recorded"}\n`;
 
   const acts = state.actions.filter(a => a.a && a.a.trim());
-  const actText = a => `${a.done ? "[done] " : ""}${a.a} (Owner: ${a.o || "UNASSIGNED"}, Due: ${a.d || "TBD"}${a.t ? ", " + a.t : ""})`;
+  const actText = a => `${a.done ? "[done] " : a.carried ? "[carried to follow-up] " : ""}${a.a} (Owner: ${a.o || "UNASSIGNED"}, Due: ${a.d || "TBD"}${a.t ? ", " + a.t : ""})`;
   o += `\nACTIONS\n${acts.length ? bullets(acts.map(actText)) : "- None"}\n`;
 
   const parking = lines(f.parking);
