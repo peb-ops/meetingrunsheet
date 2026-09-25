@@ -57,3 +57,13 @@
 - Different from plan: tests are plain PowerShell, not Pester (Windows ships Pester 3.4; installing 5 breaks the no-installs rule). A literal middle dot slipped into `timer.js` and was replaced with `·`.
 - Not tested: PowerShell 7 (not installed), real mouse hover/touch, and the Ctrl+C path after these changes (the server loop is unchanged).
 - The real `meetings\` folder is still empty and was not touched.
+
+## 2026-09-26 (v1.3.0: agenda list and Wrap up)
+
+- `web/index.html`, `web/styles.css`, `web/app.js`: the agenda text box is now a row editor (number, item, minutes, up/down, remove, Add item; Enter adds the next row). `agendaItems()` feeds the agenda check and the timer; `fromSaved()` now upgrades every old format in one place (text agenda -> rows via `agendaFromText()`, positional ticks, missing action ids) for both opened meetings and restored drafts.
+- Data: new top-level `agenda: [{t, m}]`; `fields.agenda` is no longer written. Follow-ups copy the agenda.
+- `web/timer.js`: the last item's button reads "Wrap up" (was a disabled "Last item"); pressing it shows `WRAP_UP` (new in `web/content.js`) with the meeting's time left, red if over. With no agenda the bar counts down the timebox with only Stop. The label is one `#tLabel` ("Now 2/4", "Now", "Wrap up").
+- `setupHelp()` accepts any `[data-help]` element, using `data-for` when it isn't a label (the agenda label is a span).
+- `tests/Run-Tests.ps1`: +2 checks (a one-row agenda is saved as a list, not collapsed by 5.1's JSON cmdlets; the agenda editor renders). 47/47 pass on 5.1.
+- A temporary browser harness passed 20/20 (legacy file and legacy draft convert to rows, Enter/move/remove, sum line, Next -> Wrap up -> reminder, over state, no-agenda bar, save/reopen/follow-up). Screenshots checked at 1280px and 500px. The harness wasn't kept.
+- Not tested: PowerShell 7, real mouse/touch.

@@ -41,6 +41,9 @@ const PHASES = [
   ]},
 ];
 
+// Shown in the timer bar when you press Wrap up after the last agenda item.
+const WRAP_UP = "Read back decisions and actions: each action gets one owner and a due date. Then end on time, or early.";
+
 // Meeting types: key -> [display name, tip shown under the brief].
 // The key is saved in meeting files. The dropdown lists types in this order; "general" is the default.
 const TYPES = {

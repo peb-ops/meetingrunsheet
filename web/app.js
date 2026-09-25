@@ -4,9 +4,10 @@
 */
 
 // Brief/record fields saved under meeting.fields. Each has an element with id "f-<name>" in index.html.
-const FIELDS = ["title", "type", "date", "length", "goal", "decider", "notetaker", "attendees", "agenda", "decisions", "parking", "reflect"];
-// Fields copied into a follow-up meeting.
-const FOLLOW_UP_FIELDS = ["title", "type", "length", "goal", "decider", "notetaker", "attendees", "agenda"];
+// The agenda is separate: meeting.agenda is a list of rows (see "Agenda" below).
+const FIELDS = ["title", "type", "date", "length", "goal", "decider", "notetaker", "attendees", "decisions", "parking", "reflect"];
+// Fields copied into a follow-up meeting (the agenda is copied too).
+const FOLLOW_UP_FIELDS = ["title", "type", "length", "goal", "decider", "notetaker", "attendees"];
 
 const $ = s => document.querySelector(s);
 const typeSel = $("#f-type");
@@ -21,7 +22,9 @@ function today() {
 // Action ids stay the same when an action is carried into a follow-up meeting.
 const newActionId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const blankAction = () => ({ id: newActionId(), a: "", o: "", d: "", t: "", done: false });
-const blank = () => ({ id: null, follows: null, fields: { type: "general", date: today() }, checks: {}, actions: [blankAction()] });
+const blankAgendaRow = () => ({ t: "", m: null });
+const blank = () => ({ id: null, follows: null, fields: { type: "general", date: today() }, checks: {},
+                       agenda: [blankAgendaRow()], actions: [blankAction()] });
 const typeName = key => (TYPES[key] || TYPES.general)[0];
 
 let state = blank();
@@ -113,22 +116,92 @@ function showTip() {
   tip.append(b, document.createTextNode(tipText));
 }
 
-/* ---- Agenda: "Item (N min)" lines ---- */
+/* ---- Agenda: rows of { t: title, m: minutes } ---- */
 
-// Returns [{ title, min }] for each non-empty line. min is null when the line has no minutes.
-// Accepts "(15 min)", "15 min", "15m" or "15 minutes" at the end of the line, and ignores "1." numbering.
-function parseAgenda(text) {
-  return (text || "").split("\n").map(line => line.trim()).filter(Boolean).map(line => {
+// Filled-in rows as [{ title, min }] (min is null when not set). Used by the agenda check and the timer.
+function agendaItems() {
+  return (state.agenda || [])
+    .filter(r => (r.t && r.t.trim()) || r.m)
+    .map(r => ({ title: (r.t || "").trim() || "Untitled item", min: +r.m > 0 ? +r.m : null }));
+}
+
+// Rows to save: drops empty ones.
+const agendaToSave = () => agendaItems().map(it => ({ t: it.title, m: it.min }));
+
+// Converts the free-text agenda saved before v1.3.0 ("Item (15 min)" per line) into rows.
+// Accepts "(15 min)", "15 min", "15m" or "15 minutes" at the end of a line, and drops "1." numbering.
+function agendaFromText(text) {
+  return String(text || "").split("\n").map(line => line.trim()).filter(Boolean).map(line => {
     const m = /\(?\s*(\d+)\s*(?:m|min|mins|minutes)\s*\)?\s*$/i.exec(line);
     const title = (m ? line.slice(0, m.index) : line).replace(/^\d+[.)]\s*/, "").replace(/[\s-]+$/, "");
-    return { title: title || line, min: m ? +m[1] : null };
+    return { t: title || line, m: m ? +m[1] : null };
   });
+}
+
+function renderAgenda() {
+  const tbody = $("#agendaRows");
+  tbody.innerHTML = "";
+  state.agenda.forEach((row, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="n">${i + 1}</td>
+      <td><input type="text" id="ag-t-${i}" aria-label="Agenda item ${i + 1}" placeholder="${i ? "Next item" : "e.g. Context and goal"}"></td>
+      <td class="min"><input type="number" id="ag-m-${i}" min="1" step="1" aria-label="Minutes for item ${i + 1}" placeholder="min"></td>
+      <td class="mv"><button data-mv="-1" aria-label="Move up">&uarr;</button><button data-mv="1" aria-label="Move down">&darr;</button></td>
+      <td class="x"><button aria-label="Remove item">&times;</button></td>`;
+
+    const title = tr.querySelector(`#ag-t-${i}`);
+    const min = tr.querySelector(`#ag-m-${i}`);
+    title.value = row.t || "";
+    min.value = row.m ?? "";
+    title.oninput = () => { row.t = title.value; agendaChanged(); };
+    min.oninput = () => { row.m = min.value === "" ? null : +min.value; agendaChanged(); };
+    // Enter adds the next item, so a whole agenda can be typed without the mouse.
+    [title, min].forEach(input => input.onkeydown = e => {
+      if (e.key === "Enter") { e.preventDefault(); addAgendaRow(i + 1); }
+    });
+
+    tr.querySelectorAll("[data-mv]").forEach(b => {
+      const to = i + +b.dataset.mv;
+      b.disabled = to < 0 || to >= state.agenda.length;
+      b.onclick = () => moveAgendaRow(i, to);
+    });
+    tr.querySelector("td.x button").onclick = () => {
+      state.agenda.splice(i, 1);
+      if (!state.agenda.length) state.agenda.push(blankAgendaRow());
+      agendaChanged();
+      renderAgenda();
+    };
+
+    tbody.appendChild(tr);
+  });
+}
+
+function agendaChanged() {
+  markDirty();
+  showAgendaSum();
+}
+
+function addAgendaRow(at) {
+  state.agenda.splice(at, 0, blankAgendaRow());
+  agendaChanged();
+  renderAgenda();
+  $(`#ag-t-${at}`).focus();
+}
+
+function moveAgendaRow(from, to) {
+  const [row] = state.agenda.splice(from, 1);
+  state.agenda.splice(to, 0, row);
+  agendaChanged();
+  renderAgenda();
+  // Keep focus on the same arrow so the row can be moved several places with the keyboard.
+  const arrow = document.querySelector(`#agendaRows tr:nth-child(${to + 1}) [data-mv="${to > from ? 1 : -1}"]`);
+  (arrow.disabled ? $(`#ag-t-${to}`) : arrow).focus();
 }
 
 // The line under the agenda: total minutes against the timebox, and items missing minutes.
 function showAgendaSum() {
   const box = $("#agendaSum");
-  const items = parseAgenda(state.fields.agenda);
+  const items = agendaItems();
   box.hidden = !items.length;
   if (!items.length) return;
 
@@ -141,7 +214,7 @@ function showAgendaSum() {
   else if (total < timebox) msg = `Agenda is ${total} of ${timebox} min: ${timebox - total} min spare.`;
   else msg = `Agenda fits the timebox: ${total} of ${timebox} min.`;
   if (missing) {
-    msg += ` ${missing} item${missing > 1 ? "s have" : " has"} no minutes, e.g. "Review crashes (15 min)".`;
+    msg += ` ${missing} item${missing > 1 ? "s have" : " has"} no minutes.`;
     warn = true;
   }
   box.textContent = msg;
@@ -314,6 +387,7 @@ function renderAll() {
   if (!typeSel.value) typeSel.value = "general";
   showTip();
   showFollows();
+  renderAgenda();
   showAgendaSum();
   renderPhases();
   renderActions();
@@ -381,19 +455,31 @@ function highlight() {
 
 /* ---- Commands: open, save, new, follow-up, delete ---- */
 
+// Brings a saved meeting (or a stored draft) up to the current format.
+function fromSaved(m) {
+  const fields = Object.assign({}, m.fields);
+  const agenda = Array.isArray(m.agenda)
+    ? m.agenda.map(r => ({ t: String(r.t || ""), m: +r.m > 0 ? +r.m : null }))
+    : agendaFromText(fields.agenda);   // before v1.3.0: free text in fields.agenda
+  delete fields.agenda;
+  const actions = (m.actions && m.actions.length) ? m.actions : [blankAction()];
+  actions.forEach(a => { if (!a.id) a.id = newActionId(); });   // before v1.2.0: no action ids
+  return {
+    id: m.id || null,
+    savedAt: m.savedAt,
+    follows: m.follows || null,
+    fields,
+    checks: migrateChecks(m.checks),
+    agenda: agenda.length ? agenda : [blankAgendaRow()],
+    actions,
+  };
+}
+
 async function openMeeting(id) {
   try {
     const m = await api("GET", "/api/meetings/" + encodeURIComponent(id));
-    const actions = (m.actions && m.actions.length) ? m.actions : [blankAction()];
-    actions.forEach(a => { if (!a.id) a.id = newActionId(); });   // files from before v1.2.0
-    state = {
-      id: m.id || id,
-      savedAt: m.savedAt,
-      follows: m.follows || null,
-      fields: m.fields || {},
-      checks: migrateChecks(m.checks),
-      actions,
-    };
+    state = fromSaved(m);
+    state.id = state.id || id;
     markClean();
     renderAll();
     window.scrollTo(0, 0);
@@ -406,6 +492,7 @@ async function save() {
   const body = {
     fields: state.fields,
     checks: state.checks,
+    agenda: agendaToSave(),
     actions: state.actions.filter(a => a.a || a.o || a.d || a.t),   // drop empty rows
     follows: state.follows || undefined,
   };
@@ -437,7 +524,8 @@ function followUp() {
   const fields = { date: today() };
   FOLLOW_UP_FIELDS.forEach(k => { if (state.fields[k]) fields[k] = state.fields[k]; });
   const open = state.actions.filter(a => a.a && !a.done && !a.carried).map(a => Object.assign({}, a));
-  state = { id: null, follows: state.id, fields, checks: {}, actions: open.length ? open : [blankAction()] };
+  const agenda = state.agenda.map(r => Object.assign({}, r));
+  state = { id: null, follows: state.id, fields, checks: {}, agenda, actions: open.length ? open : [blankAction()] };
   renderAll();
   markDirty();
   toast(open.length ? `Carried over ${open.length} open action${open.length > 1 ? "s" : ""}` : "Brief copied to a new meeting");
@@ -531,7 +619,7 @@ function offerDraft() {
   const title = draft.state.fields.title || "Untitled meeting";
   const when = new Date(draft.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
   ask(`Unsaved changes to "${title}" from ${when} were found. Restore them?`, "Restore", () => {
-    state = Object.assign(blank(), draft.state, { checks: migrateChecks(draft.state.checks) });
+    state = fromSaved(draft.state);
     renderAll();
     markDirty();
   }, clearDraft);
@@ -541,9 +629,10 @@ function offerDraft() {
 
 // Turns each <label data-help="..."> into the label plus a (?) button with a tooltip.
 // The tip shows while hovering the button; a click (or tap) pins it open until Escape or a click elsewhere.
-// The field's input is described by the tip, so screen readers read it on focus.
+// The field's input (label "for", or data-for on a non-label) is described by the tip for screen readers.
 function setupHelp() {
-  document.querySelectorAll("label[data-help]").forEach(label => {
+  document.querySelectorAll("[data-help]").forEach(label => {
+    const target = label.htmlFor || label.dataset.for;
     const row = document.createElement("div");
     row.className = "label-row";
     label.replaceWith(row);
@@ -558,12 +647,12 @@ function setupHelp() {
 
     const tip = document.createElement("span");
     tip.className = "help-tip";
-    tip.id = "help-" + label.htmlFor;
+    tip.id = "help-" + target;
     tip.setAttribute("role", "tooltip");
     tip.textContent = label.dataset.help;
 
     row.append(label, btn, tip);
-    document.getElementById(label.htmlFor).setAttribute("aria-describedby", tip.id);
+    document.getElementById(target).setAttribute("aria-describedby", tip.id);
 
     btn.onclick = () => {
       const open = !row.classList.contains("open");
@@ -592,7 +681,7 @@ FIELDS.forEach(f => {
     state.fields[f] = el.value;
     markDirty();
     if (f === "type") showTip();
-    if (f === "agenda" || f === "length") showAgendaSum();
+    if (f === "length") showAgendaSum();
   });
 });
 
@@ -619,6 +708,7 @@ $("#newBtn").onclick = () => guard(newMeeting);
 $("#followBtn").onclick = () => guard(followUp);
 $("#deleteBtn").onclick = () => ask(`Delete "${state.fields.title || "Untitled meeting"}" permanently?`, "Delete", deleteMeeting);
 $("#addAction").onclick = addAction;
+$("#addAgenda").onclick = () => addAgendaRow(state.agenda.length);
 $("#copyBtn").onclick = copyNotes;
 
 document.addEventListener("keydown", e => {

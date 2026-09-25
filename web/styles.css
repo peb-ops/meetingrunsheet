@@ -86,6 +86,16 @@ header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-be
 .help-tip{display:none;position:absolute;left:0;top:calc(100% + 6px);z-index:4;width:max-content;max-width:min(340px,100%);background:var(--ink);color:var(--bg);padding:8px 10px;border-radius:6px;font-size:13px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.2)}
 .help:hover + .help-tip,.label-row.open .help-tip{display:block}
 .label-row.open .help{border-color:var(--accent);color:var(--accent)}
+/* Agenda rows (renderAgenda() in app.js). Unlike the action table, inputs keep a visible box. */
+table.agenda-table{min-width:0}
+.agenda-table td{border-top:0;padding:2px 3px}
+.agenda-table td input[type=text],.agenda-table td input[type=number]{background:var(--bg);border-color:var(--line);padding:6px 8px}
+.agenda-table td.n{width:26px;text-align:right;font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.agenda-table td.min{width:84px}
+.agenda-table td.mv{width:74px;white-space:nowrap}
+.agenda-table td.mv button{padding:3px 8px;font-weight:500;color:var(--muted)}
+.agenda-table td.mv button:disabled{opacity:.3;cursor:default;border-color:var(--line)}
+.agenda-foot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:4px}
 .agenda-sum{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
 .agenda-sum.warn{color:var(--warn)}
 .follows{margin:-6px 0 12px;font-size:14px;color:var(--muted)}

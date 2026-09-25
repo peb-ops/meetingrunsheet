@@ -125,6 +125,7 @@ try {
     $a = Invoke-Api POST '/api/meetings' (@{
         fields  = @{ title = 'Crash triage'; type = 'triage'; date = '2026-09-20' }
         checks  = @{ 'before:needs-meeting' = $true }
+        agenda  = @(@{ t = 'Decide ship / cut'; m = 15 })
         actions = @(
             @{ id = 'act1'; a = 'Fix save crash'; o = 'Ana'; d = $past; t = 'GAME-1'; done = $false },
             @{ id = 'act2'; a = 'Already done';  o = 'Bo';  d = $past; t = '';       done = $true },
@@ -142,6 +143,8 @@ try {
 
     $r = Invoke-Api GET "/api/meetings/$idA"
     Check 'GET one returns the saved meeting' ($r.Status -eq 200 -and $r.Json.fields.title -eq 'Crash triage' -and $r.Json.checks.'before:needs-meeting' -eq $true)
+    # Windows PowerShell's JSON cmdlets can collapse one-item lists; the page needs a list back.
+    Check 'one-row agenda is saved as a list' ($r.Body -match '"agenda":\s*\[' -and @($r.Json.agenda)[0].m -eq 15) ($r.Body -replace '\s+', ' ')
 
     $r = Invoke-Api PUT "/api/meetings/$idA" (($r.Json | Select-Object fields, checks, actions | ConvertTo-Json -Depth 5) -replace 'Crash triage', 'Crash triage v2')
     Check 'PUT updates and keeps the id' ($r.Status -eq 200 -and $r.Json.id -eq $idA -and $r.Json.fields.title -eq 'Crash triage v2')
@@ -236,6 +239,7 @@ try {
         Check 'sidebar lists saved meetings'      ($dom -match 'Crash triage v2')
         Check 'overdue badge shows in the list'   ($dom -match '1 overdue')
         Check 'timer bar is present and hidden'   ($dom -match 'id="timerBar"[^>]*hidden')
+        Check 'agenda editor shows one empty row' ((& $count 'id="ag-t-') -eq 1)
     }
 } finally {
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
