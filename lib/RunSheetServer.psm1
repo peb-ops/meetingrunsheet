@@ -1,0 +1,147 @@
+using module .\MeetingStore.psm1
+using module .\WebRoot.psm1
+
+# RunSheetServer: the localhost HTTP server. Serves the page from a WebRoot and the
+# meetings API from a MeetingStore.
+#
+#   $server = [RunSheetServer]::new(8080, $store, $web)
+#   $server.Start()   # throws if the port is taken
+#   $server.Run()     # blocks until Ctrl+C
+#
+# API (all JSON; non-GET requests must send header "X-Run-Sheet: 1"):
+#   GET    /api/meetings?q=    summaries, newest first
+#   POST   /api/meetings       create
+#   GET    /api/meetings/{id}  read
+#   PUT    /api/meetings/{id}  update
+#   DELETE /api/meetings/{id}  delete
+
+class RunSheetServer {
+    [int] $Port
+    [string] $Prefix
+    [MeetingStore] $Store
+    [WebRoot] $Web
+    hidden [System.Net.HttpListener] $Listener
+    hidden [System.Text.Encoding] $Utf8 = (New-Object System.Text.UTF8Encoding($false))
+
+    RunSheetServer([int] $port, [MeetingStore] $store, [WebRoot] $web) {
+        $this.Port     = $port
+        $this.Prefix   = "http://localhost:$port/"
+        $this.Store    = $store
+        $this.Web      = $web
+        $this.Listener = New-Object System.Net.HttpListener
+        $this.Listener.Prefixes.Add($this.Prefix)
+    }
+
+    [void] Start() {
+        $this.Listener.Start()
+    }
+
+    # Handles requests until Ctrl+C, then closes the listener.
+    [void] Run() {
+        try {
+            while ($this.Listener.IsListening) {
+                # Wait in short slices so Ctrl+C can stop the script between them.
+                $task = $this.Listener.GetContextAsync()
+                while (-not $task.AsyncWaitHandle.WaitOne(250)) { }
+                $this.Handle($task.GetAwaiter().GetResult())
+            }
+        } finally {
+            $this.Listener.Stop()
+            $this.Listener.Close()
+        }
+    }
+
+    # ---- Routing ----
+
+    hidden [void] Handle([System.Net.HttpListenerContext] $ctx) {
+        try {
+            $this.Route($ctx)
+        } catch {
+            Write-Warning "$($ctx.Request.HttpMethod) $($ctx.Request.Url.AbsolutePath): $($_.Exception.Message)"
+            try { $this.SendJson($ctx, @{ error = $_.Exception.Message }, 500) } catch { }
+        }
+    }
+
+    hidden [void] Route([System.Net.HttpListenerContext] $ctx) {
+        $req  = $ctx.Request
+        $path = $req.Url.AbsolutePath
+
+        # Only answer requests addressed to this machine (blocks DNS-rebinding tricks).
+        if ($req.Headers['Host'] -notmatch "^(localhost|127\.0\.0\.1)(:$($this.Port))?$") {
+            $this.SendText($ctx, 403, 'Forbidden'); return
+        }
+
+        if ($path -like '/api/*') {
+            $this.RouteApi($ctx, $path.TrimEnd('/')); return
+        }
+
+        if ($req.HttpMethod -eq 'GET') {
+            $file = $this.Web.Find($path)
+            if ($file) { $this.Send($ctx, 200, $file.Bytes, $file.ContentType); return }
+        }
+        $this.SendText($ctx, 404, 'Not found')
+    }
+
+    hidden [void] RouteApi([System.Net.HttpListenerContext] $ctx, [string] $path) {
+        $req    = $ctx.Request
+        $method = $req.HttpMethod
+
+        # Writes must carry a custom header. Other websites can't add it without a CORS
+        # preflight, which this server never approves, so they can't change your data.
+        if ($method -ne 'GET' -and $req.Headers['X-Run-Sheet'] -ne '1') {
+            $this.SendJson($ctx, @{ error = 'Missing X-Run-Sheet header' }, 403); return
+        }
+
+        if ($path -eq '/api/meetings') {
+            switch ($method) {
+                'GET'  { $this.SendJson($ctx, @($this.Store.List($req.QueryString['q'])), 200); return }
+                'POST' { $this.SendJson($ctx, $this.Store.Save($this.ReadBody($req), ''), 201); return }
+            }
+        }
+
+        $m = [regex]::Match($path, '^/api/meetings/([^/]+)$')
+        if ($m.Success -and [MeetingStore]::IsValidId($m.Groups[1].Value)) {
+            $id = $m.Groups[1].Value
+            if (-not $this.Store.Exists($id)) {
+                $this.SendJson($ctx, @{ error = 'Meeting not found' }, 404); return
+            }
+            switch ($method) {
+                'GET'    { $this.SendRaw($ctx, 200, $this.Store.ReadRaw($id)); return }
+                'PUT'    { $this.SendJson($ctx, $this.Store.Save($this.ReadBody($req), $id), 200); return }
+                'DELETE' { $this.Store.Delete($id); $this.SendJson($ctx, @{ deleted = $id }, 200); return }
+            }
+        }
+
+        $this.SendJson($ctx, @{ error = 'Not found' }, 404)
+    }
+
+    # ---- Request / response helpers ----
+
+    hidden [string] ReadBody([System.Net.HttpListenerRequest] $request) {
+        $reader = New-Object System.IO.StreamReader($request.InputStream, $this.Utf8)
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    }
+
+    hidden [void] Send([System.Net.HttpListenerContext] $ctx, [int] $status, [byte[]] $bytes, [string] $contentType) {
+        $res = $ctx.Response
+        $res.StatusCode  = $status
+        $res.ContentType = $contentType
+        $res.Headers['Cache-Control'] = 'no-store'   # always serve the latest page files and data
+        $res.ContentLength64 = $bytes.Length
+        $res.OutputStream.Write($bytes, 0, $bytes.Length)
+        $res.OutputStream.Close()
+    }
+
+    hidden [void] SendText([System.Net.HttpListenerContext] $ctx, [int] $status, [string] $text) {
+        $this.Send($ctx, $status, $this.Utf8.GetBytes($text), 'text/plain; charset=utf-8')
+    }
+
+    # Sends a string that is already JSON (e.g. a meeting file as stored).
+    hidden [void] SendRaw([System.Net.HttpListenerContext] $ctx, [int] $status, [string] $json) {
+        $this.Send($ctx, $status, $this.Utf8.GetBytes($json), 'application/json; charset=utf-8')
+    }
+
+    hidden [void] SendJson([System.Net.HttpListenerContext] $ctx, [object] $object, [int] $status) {
+        $this.SendRaw($ctx, $status, (ConvertTo-Json -InputObject $object -Depth 10 -Compress))
+    }
+}

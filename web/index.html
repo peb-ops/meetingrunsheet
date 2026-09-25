@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meeting Run Sheet</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="panel" aria-label="Past meetings">
+    <div class="side-head">
+      <h2>Meetings</h2>
+      <button id="newBtn" title="Start a blank meeting">New</button>
+    </div>
+    <input id="search" type="search" placeholder="Search titles, notes, people..." aria-label="Search meetings">
+    <div class="list" id="list"></div>
+  </aside>
+
+  <main>
+    <header>
+      <h1>Meeting Run Sheet</h1>
+      <div class="toolbar">
+        <span class="status" id="status">New meeting</span>
+        <button class="primary" id="saveBtn" title="Ctrl+S">Save</button>
+        <button id="copyBtn">Copy notes</button>
+        <button id="followBtn" title="New meeting with the same brief and any open actions">Follow-up meeting</button>
+        <button class="danger" id="deleteBtn" hidden>Delete</button>
+      </div>
+    </header>
+
+    <div class="panel confirm" id="confirmBox" hidden>
+      <span id="confirmMsg"></span>
+      <div class="toolbar"><button class="primary" id="confirmYes">Yes</button><button id="confirmNo">Cancel</button></div>
+    </div>
+    <div class="panel" id="fallbackBox" hidden>
+      <div class="label label-above">Copy didn't go through. Select this text and copy it.</div>
+      <textarea id="copyFallback" readonly></textarea>
+    </div>
+
+    <!-- The brief. Each input id is "f-" + a key of FIELDS in app.js.
+         data-help on a label becomes a (?) tooltip next to it (see setupHelp in app.js). -->
+    <section class="panel" aria-labelledby="briefH">
+      <h2 id="briefH" class="panel-title">The brief</h2>
+      <div class="fields">
+        <div class="field wide"><label class="label" for="f-title">Meeting</label><input id="f-title" type="text" placeholder="e.g. M3 bug triage: save system crashes"></div>
+        <div class="field"><label class="label" for="f-type">Type</label><select id="f-type"></select></div>
+        <div class="field"><label class="label" for="f-date">Date</label><input id="f-date" type="date"></div>
+        <div class="field"><label class="label" for="f-length">Timebox (min)</label><input id="f-length" type="number" min="5" step="5" placeholder="30"></div>
+        <div class="field wide"><label class="label" for="f-goal" data-help="A decision or an output, not &quot;discuss X&quot;. If you can't name one, it may not need a meeting.">Goal: we leave this meeting with...</label><input id="f-goal" type="text" placeholder="e.g. a ship / cut call on every P1 save-system crash"></div>
+        <div class="field"><label class="label" for="f-decider" data-help="The one person who makes the call if the room disagrees.">Decision owner</label><input id="f-decider" type="text" placeholder="Name"></div>
+        <div class="field"><label class="label" for="f-notetaker" data-help="Ideally not you. Taking notes stops you watching the room.">Note-taker</label><input id="f-notetaker" type="text" placeholder="Name"></div>
+        <div class="field"><label class="label" for="f-attendees">Attendees</label><input id="f-attendees" type="text" placeholder="Eng lead, QA lead, design..."></div>
+        <div class="field wide"><label class="label" for="f-agenda" data-help="One item per line, with its minutes. Put decision items first, while energy is high. The minutes should add up to the timebox.">Agenda</label><textarea id="f-agenda" rows="4" placeholder="Context and goal (3 min)&#10;Decide ship / cut on each P1 crash (15 min)&#10;Assign owners (10 min)&#10;Read back decisions and actions (2 min)"></textarea></div>
+        <div class="tip" id="typeTip"></div>
+      </div>
+    </section>
+
+    <!-- Checklist: filled in from PHASES in content.js -->
+    <section class="phases" id="phases" aria-label="Checklist"></section>
+
+    <section class="panel" aria-labelledby="recH">
+      <h2 id="recH" class="panel-title">The record</h2>
+      <div class="record">
+        <div class="field"><label class="label" for="f-decisions" data-help="One per line. State the decision, not the discussion.">Decisions made</label><textarea id="f-decisions" rows="5" placeholder="e.g. Cloud saves are cut from M3"></textarea></div>
+        <div class="field"><label class="label" for="f-parking" data-help="Off-topic items raised in the meeting, and who follows up on each.">Parking lot</label><textarea id="f-parking" rows="5" placeholder="e.g. Controller remapping - Sam starts a thread"></textarea></div>
+        <div class="full">
+          <div class="label label-above">Action items</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th class="label">Done</th><th class="label">Action</th><th class="label">Owner (one person)</th><th class="label">Due</th><th class="label">Ticket</th><th></th></tr></thead>
+              <tbody id="actionRows"></tbody>
+            </table>
+          </div>
+          <button id="addAction" class="add-action">Add action</button>
+          <p class="rule">Every action needs one owner and a date. "We'll look into it" is not an action.</p>
+        </div>
+        <div class="field full"><label class="label" for="f-reflect" data-help="Goal met? On time? Did everyone who should speak get to? Ask one attendee for feedback too.">Self-review</label><textarea id="f-reflect" rows="3" placeholder="One thing to keep, one thing to change next time"></textarea></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="content.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

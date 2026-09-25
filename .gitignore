@@ -1,0 +1,9 @@
+# User data: meeting files stay on this machine
+meetings/
+
+# Test data and temp files
+test-data/
+*.tmp
+
+# Local Claude Code settings
+.claude/settings.local.json
