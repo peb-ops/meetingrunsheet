@@ -27,6 +27,12 @@ class MeetingStore {
         return (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6)
     }
 
+    # A date value as "yyyy-MM-dd". PowerShell 7's ConvertFrom-Json may already have turned it into a DateTime.
+    static [string] DayText([object] $value) {
+        if ($value -is [datetime]) { return $value.ToString('yyyy-MM-dd') }
+        return [string]$value
+    }
+
     [string] PathOf([string] $id) {
         return [System.IO.Path]::Combine($this.Root, "$id.json")
     }
@@ -58,22 +64,26 @@ class MeetingStore {
         return $meeting
     }
 
-    # Summaries for the sidebar: {id,title,date,type,savedAt,openActions}, newest first.
+    # Summaries for the sidebar: {id,title,date,type,savedAt,openActions,overdueActions}, newest first.
     # $query is a case-insensitive substring match on the raw file text.
     [object[]] List([string] $query) {
+        $today = (Get-Date).ToString('yyyy-MM-dd')
         $items = New-Object System.Collections.Generic.List[object]
         foreach ($file in [System.IO.Directory]::GetFiles($this.Root, '*.json')) {
             $raw = [System.IO.File]::ReadAllText($file, $this.Utf8)
             if ($query -and $raw.IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
             try { $m = $raw | ConvertFrom-Json } catch { continue }   # skip unreadable files
 
+            # Open = has text, not done. Due dates are "yyyy-MM-dd", so they compare as strings.
+            $open = @($m.actions | Where-Object { $_.a -and -not $_.done })
             $items.Add([pscustomobject]@{
-                id          = [System.IO.Path]::GetFileNameWithoutExtension($file)
-                title       = $m.fields.title
-                date        = $m.fields.date
-                type        = $m.fields.type
-                savedAt     = $m.savedAt
-                openActions = @($m.actions | Where-Object { $_.a -and -not $_.done }).Count
+                id             = [System.IO.Path]::GetFileNameWithoutExtension($file)
+                title          = $m.fields.title
+                date           = $m.fields.date
+                type           = $m.fields.type
+                savedAt        = $m.savedAt
+                openActions    = $open.Count
+                overdueActions = @($open | Where-Object { $_.d -and [MeetingStore]::DayText($_.d) -lt $today }).Count
             })
         }
         return @($items | Sort-Object -Property @{ Expression = { "$($_.date)" }; Descending = $true },

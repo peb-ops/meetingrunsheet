@@ -52,6 +52,7 @@ aside{position:sticky;top:20px;display:flex;flex-direction:column;gap:12px;max-h
 .item .t{font-weight:600;overflow-wrap:anywhere}
 .item .m{font-size:12.5px;color:var(--muted);font-family:var(--mono);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .pill{font-family:var(--body);font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--warn);color:var(--surface)}
+.pill.overdue{background:var(--danger)}
 .empty{color:var(--muted);font-size:14px;padding:10px 4px}
 
 /* ---- Header, toolbar, confirm bar ---- */
@@ -109,6 +110,8 @@ td input[type=text]:hover,td input[type=date]:hover{border-color:var(--line)}
 td.c{width:44px;text-align:center}
 td.c input{width:17px;height:17px;accent-color:var(--done)}
 tr.done input[type=text]{text-decoration:line-through;color:var(--muted)}
+td input.missing,td input.missing:hover{border-color:var(--warn);border-style:dashed}
+td input.overdue{color:var(--danger);font-weight:600}
 td.x{width:40px}
 td.x button{padding:3px 9px;font-weight:500;color:var(--muted)}
 .add-action{margin-top:10px}

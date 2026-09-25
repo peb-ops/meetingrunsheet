@@ -207,6 +207,23 @@ function updateCounts() {
 
 /* ---- Render: action items ---- */
 
+// Every open action needs one owner and a due date; past-due open actions are overdue.
+const isOverdue = row => !!(row.d && !row.done && row.d < today());
+
+function flagAction(tr, row) {
+  const open = !!(row.a && row.a.trim()) && !row.done;
+  const flag = (k, on, why) => {
+    const input = tr.querySelector(`[data-k="${k}"]`);
+    input.classList.toggle("missing", on);
+    input.title = on ? why : "";
+  };
+  flag("o", open && !(row.o && row.o.trim()), "Needs one owner");
+  flag("d", open && !row.d, "Needs a due date");
+  const due = tr.querySelector('[data-k="d"]');
+  due.classList.toggle("overdue", isOverdue(row));
+  if (isOverdue(row)) due.title = "Overdue";
+}
+
 function renderActions() {
   const tbody = $("#actionRows");
   tbody.innerHTML = "";
@@ -223,9 +240,11 @@ function renderActions() {
     // a = action, o = owner, d = due date, t = ticket
     ["a", "o", "d", "t"].forEach(k => {
       const input = tr.querySelector(`#act-${k}-${i}`);
+      input.dataset.k = k;
       input.value = row[k] || "";
       input.oninput = () => {
         row[k] = input.value;
+        flagAction(tr, row);
         markDirty();
       };
     });
@@ -235,8 +254,10 @@ function renderActions() {
     doneBox.onchange = () => {
       row.done = doneBox.checked;
       tr.classList.toggle("done", row.done);
+      flagAction(tr, row);
       markDirty();
     };
+    flagAction(tr, row);
 
     tr.querySelector("button").onclick = () => {
       state.actions.splice(i, 1);
@@ -296,12 +317,14 @@ function listItem(m) {
   const meta = document.createElement("span");
   meta.className = "m";
   meta.textContent = [m.date, typeName(m.type)].filter(Boolean).join(" \u00b7 ");
-  if (m.openActions > 0) {
-    const pill = document.createElement("span");
-    pill.className = "pill";
-    pill.textContent = m.openActions + " open";
-    meta.appendChild(pill);
-  }
+  const pill = (text, cls) => {
+    const p = document.createElement("span");
+    p.className = "pill " + cls;
+    p.textContent = text;
+    meta.appendChild(p);
+  };
+  if (m.openActions > 0) pill(m.openActions + " open", "open");
+  if (m.overdueActions > 0) pill(m.overdueActions + " overdue", "overdue");
 
   b.append(title, meta);
   b.onclick = () => guard(() => openMeeting(m.id));
