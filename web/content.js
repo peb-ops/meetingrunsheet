@@ -3,7 +3,7 @@
   Edit freely, then refresh the browser. No server restart needed.
 
   Checklist items: [id, title, description]. Saved meetings store ticks as "<phase id>:<item id>"
-  (e.g. "before:trim-invites"), so you can reorder, insert and remove items freely.
+  (e.g. "before:send-agenda"), so you can reorder, insert and remove items freely.
   Never RENAME an id or reuse an old one for a different item, and keep ids unique within a phase.
   Don't rename phase ids ("before", "during", "after") or TYPES keys either.
 
@@ -15,15 +15,12 @@
 // Each item is [id, title, description].
 const PHASES = [
   { id: "before", name: "Before", items: [
-    ["trim-invites", "Trim the invite list", "Deciders and key information holders only. Everyone else gets the notes."],
     ["send-agenda", "Send agenda and pre-reads", "At least 24h ahead: TDD, crash data, build number, burndown."],
-    ["pre-wire", "Pre-wire contentious decisions", "Talk to the key people one-on-one first, so the big disagreement doesn't surface for the first time in the room."],
     ["prep-room", "Prep the room / call", "Build running, dashboards open, screen share tested, tracker ready."],
   ]},
   { id: "during", name: "During", items: [
     ["start-on-time", "Start on time", "Don't reward late arrivals by recapping from the start."],
     ["state-goal", "State goal, timebox and decision owner", "\"We have 30 minutes and we leave with...\""],
-    ["keep-time", "Keep to the agenda and the clock", "Give a warning at 5 minutes left on each item."],
     ["park-tangents", "Park tangents out loud", "Write them in the parking lot, name who follows up, move on."],
     ["quiet-voices", "Bring in quieter voices", "Ask QA, tech art and juniors directly. They often spot the risk."],
     ["stay-neutral", "Stay neutral while facilitating", "Say when you step out of the role to give your own view."],
@@ -34,9 +31,6 @@ const PHASES = [
   { id: "after", name: "After", items: [
     ["send-notes", "Send notes within a few hours", "Use Copy notes. Decisions, actions (owner + due), parking lot, open questions."],
     ["log-actions", "Log actions in the tracker", "Jira, Hansoft, Shotgrid or similar. Put the ticket keys in the Ticket column."],
-    ["update-docs", "Update affected docs and schedule", "Milestone plan, risk register, TDD, feature status."],
-    ["parking-followup", "Follow up on parking-lot items", "Each one gets a thread, a ticket or a slot in a future meeting."],
-    ["check-actions", "Check actions before the next meeting", "Chase overdue items privately before they go public."],
   ]},
 ];
 
