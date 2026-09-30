@@ -12,7 +12,7 @@ script serves a checklist web page on localhost and stores each meeting as a JSO
 - `lib\RunSheetServer.psm1` - class `RunSheetServer`: `HttpListener`, Host/CSRF guards, routing, API, Ctrl+C-friendly loop.
 - `web\index.html` (markup), `web\styles.css` (theme + layout), `web\content.js` (`PHASES` checklist and
   `TYPES` tips, data only), `web\app.js` (page behaviour), `web\timer.js` (meeting timer bar; loads after
-  app.js and uses its globals). Classic scripts sharing globals, no modules or build step. Read from disk on every request with
+  app.js and uses its globals), `web\nav.js` (floating section nav; loads last). Classic scripts sharing globals, no modules or build step. Read from disk on every request with
   `Cache-Control: no-store`, so UI edits need only a browser refresh, not a server restart.
 - `Start-RunSheet.cmd` - double-click launcher; runs the script with `-ExecutionPolicy Bypass` and passes arguments through.
 - `tests\Run-Tests.ps1` - dependency-free test suite (see Run).
@@ -99,6 +99,9 @@ back to the original), Delete (inline confirm, no browser dialogs).
 Unsaved work is kept as a draft in localStorage (`runsheet-draft`) and offered for restore on the next load.
 Field advice lives in `data-help` on the label and shows as a (?) tooltip (hover, or click/tap to pin; Esc closes);
 placeholders hold only short examples, because they get cut off and vanish once you type.
+Section nav (`NAV_TARGETS` in nav.js): Brief, Agenda, each phase, Decisions, Parking lot, Actions, Self-review;
+always shown in the right margin at 1660px and wider, otherwise a Sections button bottom right; highlights the
+current section, lands below the timer bar, and focuses the notes box for Decisions / Parking lot / Self-review.
 Warns on unsaved changes. Light and dark themes via `prefers-color-scheme`. No external resources (works offline).
 
 ## Hard rules
@@ -138,6 +141,7 @@ Warns on unsaved changes. Light and dark themes via `prefers-color-scheme`. No e
   `trim-invites` (advice moved to the Attendees tooltip), `pre-wire`, `keep-time` (the timer does it), `update-docs`,
   `parking-followup`, `check-actions` (overdue badges and Follow-up meeting cover it). These ids are retired: old
   ticks stay in files but are ignored (`LEGACY_CHECKS` may still map to them); never reuse them.
+- v1.4.0 - floating section nav (`web\nav.js`) to jump between sections without scrolling. Tests: 48 checks.
 
 ## Ideas not yet built
 

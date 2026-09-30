@@ -240,6 +240,7 @@ try {
         Check 'overdue badge shows in the list'   ($dom -match '1 overdue')
         Check 'timer bar is present and hidden'   ($dom -match 'id="timerBar"[^>]*hidden')
         Check 'agenda editor shows one empty row' ((& $count 'id="ag-t-') -eq 1)
+        Check 'section nav lists 9 sections'     ((& $count 'class="jump-link') -eq 9) "(got $(& $count 'class="jump-link'))"
     }
 } finally {
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
