@@ -3,7 +3,7 @@
   Edit freely, then refresh the browser. No server restart needed.
 
   Checklist items: [id, title, description]. Saved meetings store ticks as "<phase id>:<item id>"
-  (e.g. "before:needs-meeting"), so you can reorder, insert and remove items freely.
+  (e.g. "before:trim-invites"), so you can reorder, insert and remove items freely.
   Never RENAME an id or reuse an old one for a different item, and keep ids unique within a phase.
   Don't rename phase ids ("before", "during", "after") or TYPES keys either.
 
@@ -15,7 +15,6 @@
 // Each item is [id, title, description].
 const PHASES = [
   { id: "before", name: "Before", items: [
-    ["needs-meeting", "Confirm it needs a meeting", "Could a written update, a Slack thread or a doc comment do the job instead?"],
     ["trim-invites", "Trim the invite list", "Deciders and key information holders only. Everyone else gets the notes."],
     ["send-agenda", "Send agenda and pre-reads", "At least 24h ahead: TDD, crash data, build number, burndown."],
     ["pre-wire", "Pre-wire contentious decisions", "Talk to the key people one-on-one first, so the big disagreement doesn't surface for the first time in the room."],

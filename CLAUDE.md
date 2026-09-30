@@ -56,7 +56,7 @@ All JSON. Non-GET requests must send header `X-Run-Sheet: 1` (CSRF guard). Host 
   "fields": { "title": "", "type": "triage", "date": "2026-09-25", "length": "30", "goal": "",
               "decider": "", "notetaker": "", "attendees": "",
               "decisions": "", "parking": "", "reflect": "" },
-  "checks": { "before:needs-meeting": true },
+  "checks": { "before:trim-invites": true },
   "agenda": [ { "t": "Decide ship / cut", "m": 15 }, { "t": "Open floor", "m": null } ],
   "actions": [ { "id": "mfz3k2a9x1q", "a": "action", "o": "owner", "d": "2026-10-02", "t": "GAME-123", "done": false,
                  "carried": "20260930-100000-9c1e2f" } ],
@@ -134,6 +134,8 @@ Warns on unsaved changes. Light and dark themes via `prefers-color-scheme`. No e
 - v1.3.0 - agenda is a row editor saved as `agenda: [{t, m}]` (old text agendas converted on open); timer's last
   item button is Wrap up (closing reminder + meeting time left) instead of a disabled "Last item"; no Next/Wrap up
   button without an agenda. `[data-help]` works on non-label elements via `data-for`. Tests: 47 checks.
+- v1.3.1 - removed the "Confirm it needs a meeting" checklist item (Before is now 4 items). Its id `needs-meeting`
+  is retired: old ticks stay in files but are ignored; don't reuse it.
 
 ## Ideas not yet built
 

@@ -233,7 +233,7 @@ try {
             Where-Object { $_.CommandLine -like "*$work*" } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         $count = { param($pattern) ([regex]::Matches($dom, $pattern)).Count }
-        Check 'checklist renders 19 items'        ((& $count 'id="chk-') -eq 19) "(got $(& $count 'id="chk-'))"
+        Check 'checklist renders 18 items'        ((& $count 'id="chk-') -eq 18) "(got $(& $count 'id="chk-'))"
         Check 'type dropdown has 8 types'         ((& $count '<option value=') -eq 8)
         Check 'help tooltips are built (7)'       ((& $count 'class="label-row') -eq 7)
         Check 'sidebar lists saved meetings'      ($dom -match 'Crash triage v2')

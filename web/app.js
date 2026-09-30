@@ -223,7 +223,7 @@ function showAgendaSum() {
 
 /* ---- Render: checklist ---- */
 
-// Saved tick key for a checklist item, e.g. "before:needs-meeting".
+// Saved tick key for a checklist item, e.g. "before:trim-invites".
 const checkKey = (phase, itemId) => `${phase.id}:${itemId}`;
 
 // Files saved before v1.2.0 keyed ticks by position ("before-0") in the v1.0 checklist order.
