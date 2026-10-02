@@ -33,7 +33,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14.
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .app{max-width:1320px;margin:0 auto;display:grid;grid-template-columns:272px minmax(0,1fr);gap:24px;align-items:start}
 .app.side-off{grid-template-columns:minmax(0,1fr);max-width:1080px}
-.app.side-off .side{display:none}
+.app.side-off .side-col{display:none}
 @media (max-width:900px){.app,.app.side-off{grid-template-columns:minmax(0,1fr)}}
 h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
 h1{font-size:16px;font-weight:600}
@@ -75,8 +75,12 @@ textarea{resize:vertical;min-height:72px;line-height:1.55}
 @media (max-width:760px){.grid.two,.grid.two.wide-left{grid-template-columns:minmax(0,1fr)}}
 
 /* ---- Sidebar: past meetings ---- */
-.side{position:sticky;top:16px;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 32px);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
-@media (max-width:900px){.side{position:static;max-height:none}}
+/* The column stays in view while the page scrolls. Both cards take their natural height; when
+   they don't fit the window, the meetings list scrolls inside its card and the calendar keeps its size. */
+.side-col{position:sticky;top:16px;display:flex;flex-direction:column;gap:16px;max-height:calc(100vh - 32px);overflow:auto}
+.side{display:flex;flex-direction:column;gap:10px;flex:0 1 auto;min-height:200px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.side.cal{flex:none;min-height:0;gap:8px}
+@media (max-width:900px){.side-col{position:static;max-height:none}.side{flex:none}}
 .side-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .side-head button{padding:5px 11px}
 .list{overflow:auto;display:flex;flex-direction:column;gap:2px;margin:0 -6px}
@@ -95,17 +99,12 @@ textarea{resize:vertical;min-height:72px;line-height:1.55}
 .group{font-size:12px;font-weight:600;color:var(--faint);padding:10px 10px 2px}
 .group:first-child{padding-top:2px}
 
-/* List | Calendar tabs */
-.tabs{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:3px;background:var(--field);border:1px solid var(--line);border-radius:var(--radius-sm)}
-.tabs button{border:0;background:transparent;padding:5px 8px;color:var(--muted);border-radius:6px}
-.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
 button.sm{padding:3px 8px;font-size:12.5px}
 button.icon.sm{width:28px;height:28px;font-size:18px}
 
 /* Calendar (renderCalendar in app.js) */
-.cal{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto;margin:0 -6px;padding:0 6px}
 .cal-head{display:flex;align-items:center;gap:4px}
-.cal-head b{flex:1;font-weight:600;font-size:14px;padding-left:4px}
+.cal-head h2{flex:1}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
 .cal-grid .dow{font-size:11px;font-weight:500;color:var(--faint);text-align:center;padding:2px 0}
 .day{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:34px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;font-size:12.5px;font-weight:400;font-variant-numeric:tabular-nums}

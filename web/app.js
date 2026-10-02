@@ -603,23 +603,7 @@ function showMonth(delta) {
   renderCalendar();
 }
 
-// List | Calendar tabs. The choice is remembered in this browser only.
-const TAB_KEY = "runsheet-side-tab";
-
-function showTab(cal) {
-  $("#list").hidden = cal;
-  $("#cal").hidden = !cal;
-  $("#tabList").setAttribute("aria-selected", String(!cal));
-  $("#tabCal").setAttribute("aria-selected", String(cal));
-  try { localStorage.setItem(TAB_KEY, cal ? "cal" : ""); } catch (e) {}
-}
-
-function setupTabs() {
-  let cal = false;
-  try { cal = localStorage.getItem(TAB_KEY) === "cal"; } catch (e) {}
-  showTab(cal);
-  $("#tabList").onclick = () => showTab(false);
-  $("#tabCal").onclick = () => showTab(true);
+function setupCalendar() {
   $("#calPrev").onclick = () => showMonth(-1);
   $("#calNext").onclick = () => showMonth(1);
   $("#calToday").onclick = () => { calDay = today(); calMonth = calDay.slice(0, 7); renderCalendar(); };
@@ -987,7 +971,7 @@ window.addEventListener("beforeunload", e => {
 setupHelp();
 setupMenu();
 setupSidebar();
-setupTabs();
+setupCalendar();
 fillTypeOptions();
 renderAll();
 loadList();

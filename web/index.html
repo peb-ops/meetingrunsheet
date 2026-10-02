@@ -8,28 +8,27 @@
 </head>
 <body>
 <div class="app" id="app">
-  <aside class="side" id="side" aria-label="Past meetings">
-    <div class="side-head">
-      <h2>Meetings</h2>
-      <button class="primary" id="newBtn" title="Start a blank meeting">+ New</button>
-    </div>
-    <!-- List | Calendar tabs (setupTabs in app.js). Both show the meetings from the last loadList(). -->
-    <div class="tabs" role="tablist" aria-label="Meetings view">
-      <button role="tab" id="tabList" aria-controls="list" aria-selected="true">List</button>
-      <button role="tab" id="tabCal" aria-controls="cal" aria-selected="false">Calendar</button>
-    </div>
-    <input id="search" type="search" placeholder="Search titles, notes, people..." aria-label="Search meetings">
-    <div class="list" id="list" role="tabpanel" aria-labelledby="tabList"></div>
-    <div class="cal" id="cal" role="tabpanel" aria-labelledby="tabCal" hidden>
+  <!-- Left column: the meetings list, and the calendar below it. Both show the meetings from the
+       last loadList() in app.js, so the search filters both. -->
+  <aside class="side-col" id="side" aria-label="Meetings">
+    <section class="side" aria-labelledby="meetingsH">
+      <div class="side-head">
+        <h2 id="meetingsH">Meetings</h2>
+        <button class="primary" id="newBtn" title="Start a blank meeting">+ New</button>
+      </div>
+      <input id="search" type="search" placeholder="Search titles, notes, people..." aria-label="Search meetings">
+      <div class="list" id="list"></div>
+    </section>
+    <section class="side cal" id="cal" aria-labelledby="calMonth">
       <div class="cal-head">
-        <button class="icon sm" id="calPrev" aria-label="Previous month">&lsaquo;</button>
-        <b id="calMonth" aria-live="polite"></b>
+        <h2 id="calMonth" aria-live="polite"></h2>
         <button class="ghost sm" id="calToday">Today</button>
+        <button class="icon sm" id="calPrev" aria-label="Previous month">&lsaquo;</button>
         <button class="icon sm" id="calNext" aria-label="Next month">&rsaquo;</button>
       </div>
       <div class="cal-grid" id="calGrid"></div>
       <div class="cal-list" id="calDay"></div>
-    </div>
+    </section>
   </aside>
 
   <main>
