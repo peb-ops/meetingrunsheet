@@ -13,8 +13,23 @@
       <h2>Meetings</h2>
       <button class="primary" id="newBtn" title="Start a blank meeting">+ New</button>
     </div>
+    <!-- List | Calendar tabs (setupTabs in app.js). Both show the meetings from the last loadList(). -->
+    <div class="tabs" role="tablist" aria-label="Meetings view">
+      <button role="tab" id="tabList" aria-controls="list" aria-selected="true">List</button>
+      <button role="tab" id="tabCal" aria-controls="cal" aria-selected="false">Calendar</button>
+    </div>
     <input id="search" type="search" placeholder="Search titles, notes, people..." aria-label="Search meetings">
-    <div class="list" id="list"></div>
+    <div class="list" id="list" role="tabpanel" aria-labelledby="tabList"></div>
+    <div class="cal" id="cal" role="tabpanel" aria-labelledby="tabCal" hidden>
+      <div class="cal-head">
+        <button class="icon sm" id="calPrev" aria-label="Previous month">&lsaquo;</button>
+        <b id="calMonth" aria-live="polite"></b>
+        <button class="ghost sm" id="calToday">Today</button>
+        <button class="icon sm" id="calNext" aria-label="Next month">&rsaquo;</button>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-list" id="calDay"></div>
+    </div>
   </aside>
 
   <main>
@@ -77,6 +92,7 @@
       <div class="meta">
         <div class="field chip"><label class="label" for="f-type">Type</label><select id="f-type"></select></div>
         <div class="field chip"><label class="label" for="f-date">Date</label><input id="f-date" type="date"></div>
+        <div class="field chip short"><label class="label" for="f-time">Start</label><input id="f-time" type="time"></div>
         <div class="field chip short"><label class="label" for="f-length">Timebox (min)</label><input id="f-length" type="number" min="5" step="5" placeholder="30"></div>
         <div class="field chip"><label class="label" for="f-notetaker" data-help="Taking notes stops you watching the room.">Note-taker</label><input id="f-notetaker" type="text" placeholder="Name"></div>
       </div>

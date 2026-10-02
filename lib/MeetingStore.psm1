@@ -83,7 +83,8 @@ class MeetingStore {
         $this.SyncCarried($meeting)
     }
 
-    # Summaries for the sidebar: {id,title,date,type,savedAt,openActions,overdueActions}, newest first.
+    # Summaries for the sidebar: {id,title,date,time,type,savedAt,openActions,overdueActions,
+    # hasGoal,agendaCount,beforeChecks}, newest first (by date, then start time).
     # $query is a case-insensitive substring match on the raw file text.
     [object[]] List([string] $query) {
         $today = (Get-Date).ToString('yyyy-MM-dd')
@@ -95,18 +96,40 @@ class MeetingStore {
 
             # Due dates are "yyyy-MM-dd", so they compare as strings.
             $open = @($m.actions | Where-Object { [MeetingStore]::IsOpen($_) })
+            # Agenda rows with text or minutes; before v1.3.0 the agenda was lines of text in fields.agenda.
+            $agendaCount = @($m.agenda | Where-Object { $_.t -or $_.m }).Count
+            if ($null -eq $m.agenda -and $m.fields.agenda) {
+                $agendaCount = @(([string]$m.fields.agenda) -split "`n" | Where-Object { $_.Trim() }).Count
+            }
             $items.Add([pscustomobject]@{
                 id             = [System.IO.Path]::GetFileNameWithoutExtension($file)
                 title          = $m.fields.title
-                date           = $m.fields.date
+                date           = [MeetingStore]::DayText($m.fields.date)
+                time           = [string]$m.fields.time
                 type           = $m.fields.type
                 savedAt        = $m.savedAt
                 openActions    = $open.Count
                 overdueActions = @($open | Where-Object { $_.d -and [MeetingStore]::DayText($_.d) -lt $today }).Count
+                # For the "Ready / Needs ..." badge on upcoming meetings (see readiness() in app.js).
+                hasGoal        = [bool]([string]$m.fields.goal).Trim()
+                agendaCount    = $agendaCount
+                beforeChecks   = [MeetingStore]::CheckedIn($m.checks, 'before')
             })
         }
         return @($items | Sort-Object -Property @{ Expression = { "$($_.date)" }; Descending = $true },
+                                                @{ Expression = { "$($_.time)" }; Descending = $true },
                                                 @{ Expression = { "$($_.savedAt)" }; Descending = $true })
+    }
+
+    # Item ids ticked in one checklist phase: checks {"before:send-agenda": true} -> @('send-agenda').
+    static [string[]] CheckedIn([object] $checks, [string] $phase) {
+        $ids = New-Object System.Collections.Generic.List[string]
+        if ($checks) {
+            foreach ($p in $checks.PSObject.Properties) {
+                if ($p.Name.StartsWith("${phase}:") -and $p.Value -eq $true) { $ids.Add($p.Name.Substring($phase.Length + 1)) }
+            }
+        }
+        return $ids.ToArray()
     }
 
     # ---- Backup, restore and export ----

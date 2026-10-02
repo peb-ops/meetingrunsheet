@@ -6,7 +6,7 @@
 // Brief/record fields saved under meeting.fields. Each has an element with id "f-<name>" in index.html.
 // The agenda and attendees are separate lists: meeting.agenda and meeting.attendees (see below).
 // Old files may still have fields.decider (box removed in v1.5.0); it is kept but not shown.
-const FIELDS = ["title", "type", "date", "length", "goal", "notetaker", "decisions", "parking", "reflect"];
+const FIELDS = ["title", "type", "date", "time", "length", "goal", "notetaker", "decisions", "parking", "reflect"];
 // Fields copied into a follow-up meeting (the agenda and attendees are copied too).
 const FOLLOW_UP_FIELDS = ["title", "type", "length", "goal", "notetaker"];
 
@@ -15,11 +15,13 @@ const typeSel = $("#f-type");
 
 /* ---- State ---- */
 
-function today() {
-  const d = new Date();
+// A local date as "yyyy-MM-dd".
+function isoDay(date) {
+  const d = new Date(date);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
 }
+const today = () => isoDay(new Date());
 // Action ids stay the same when an action is carried into a follow-up meeting.
 const newActionId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const blankAction = () => ({ id: newActionId(), a: "", o: "", d: "", t: "", done: false });
@@ -442,32 +444,62 @@ function renderAll() {
   if (typeof resumeTimer === "function") resumeTimer(state.id);   // timer.js loads after this file
 }
 
-/* ---- Sidebar: meeting list ---- */
+/* ---- Sidebar: meeting list and calendar ---- */
+
+let meetings = [];   // summaries from the last loadList(), newest first
 
 async function loadList() {
   const q = $("#search").value.trim();
-  const list = $("#list");
   try {
-    const items = await api("GET", "/api/meetings" + (q ? "?q=" + encodeURIComponent(q) : ""));
-    list.innerHTML = "";
-    if (!items || !items.length) {
-      const msg = q ? "No meetings match that search." : "No saved meetings yet. Fill in the run sheet and press Save.";
-      list.innerHTML = `<div class="empty">${msg}</div>`;
-      return;
-    }
-    items.forEach(m => {
-      knownMeetings[m.id] = m;
-      list.appendChild(listItem(m));
-    });
+    meetings = (await api("GET", "/api/meetings" + (q ? "?q=" + encodeURIComponent(q) : ""))) || [];
+    meetings.forEach(m => { knownMeetings[m.id] = m; });
+    renderList(q);
+    renderCalendar();
     highlight();
     showFollows();
   } catch (e) {
     const d = document.createElement("div");
     d.className = "empty";
     d.textContent = "Can't reach the server. Is the PowerShell window still running? (" + e.message + ")";
-    list.innerHTML = "";
-    list.appendChild(d);
+    $("#list").replaceChildren(d);
   }
+}
+
+// Upcoming (today and later, soonest first), then past meetings (newest first, as the server sends them).
+function renderList(q) {
+  const list = $("#list");
+  list.innerHTML = "";
+  if (!meetings.length) {
+    const msg = q ? "No meetings match that search." : "No saved meetings yet. Fill in the run sheet and press Save.";
+    list.innerHTML = `<div class="empty">${msg}</div>`;
+    return;
+  }
+  const now = today();
+  const upcoming = meetings.filter(m => m.date >= now).reverse();
+  const past = meetings.filter(m => !(m.date >= now));
+  const group = (name, items) => {
+    if (!items.length) return;
+    if (name) {
+      const h = document.createElement("div");
+      h.className = "group";
+      h.textContent = name;
+      list.appendChild(h);
+    }
+    items.forEach(m => list.appendChild(listItem(m)));
+  };
+  group("Upcoming", upcoming);
+  group(upcoming.length ? "Past" : "", past);
+}
+
+// How prepared an upcoming meeting is: a goal, an agenda, and the Before checklist done.
+function readiness(m) {
+  const before = (PHASES.find(p => p.id === "before") || { items: [] }).items.map(([id]) => id);
+  const done = before.filter(id => (m.beforeChecks || []).includes(id)).length;
+  const missing = [];
+  if (!m.hasGoal) missing.push("goal");
+  if (!m.agendaCount) missing.push("agenda");
+  if (done < before.length) missing.push(`prep ${done}/${before.length}`);
+  return missing.length ? { text: "Needs " + missing.join(", "), ready: false } : { text: "Ready", ready: true };
 }
 
 function listItem(m) {
@@ -481,19 +513,116 @@ function listItem(m) {
 
   const meta = document.createElement("span");
   meta.className = "m";
-  meta.textContent = [m.date, typeName(m.type)].filter(Boolean).join(" \u00b7 ");
+  meta.textContent = [m.date, m.time, typeName(m.type)].filter(Boolean).join(" \u00b7 ");
   const pill = (text, cls) => {
     const p = document.createElement("span");
     p.className = "pill " + cls;
     p.textContent = text;
     meta.appendChild(p);
   };
+  if (m.date >= today()) {
+    const r = readiness(m);
+    pill(r.text, r.ready ? "ready" : "prep");
+  }
   if (m.openActions > 0) pill(m.openActions + " open", "open");
   if (m.overdueActions > 0) pill(m.overdueActions + " overdue", "overdue");
 
   b.append(title, meta);
   b.onclick = () => guard(() => openMeeting(m.id));
   return b;
+}
+
+// Month grid (Monday first, always 6 weeks so it doesn't jump), then the chosen day's meetings.
+let calMonth = today().slice(0, 7);   // "yyyy-MM" shown
+let calDay = today();                 // "yyyy-MM-dd" selected
+
+function renderCalendar() {
+  const [y, mo] = calMonth.split("-").map(Number);
+  const first = new Date(y, mo - 1, 1);
+  $("#calMonth").textContent = first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  const byDay = {};
+  meetings.forEach(m => { if (m.date) (byDay[m.date] = byDay[m.date] || []).push(m); });
+
+  const grid = $("#calGrid");
+  grid.innerHTML = "";
+  ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].forEach(d => {
+    const h = document.createElement("span");
+    h.className = "dow";
+    h.textContent = d;
+    grid.appendChild(h);
+  });
+  const now = today();
+  const start = new Date(y, mo - 1, 1 - (first.getDay() + 6) % 7);
+  for (let i = 0; i < 42; i++) {
+    const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    const iso = isoDay(date);
+    const count = (byDay[iso] || []).length;
+    const b = document.createElement("button");
+    b.className = "day" + (iso.slice(0, 7) !== calMonth ? " out" : "") + (iso === now ? " today" : "") + (iso === calDay ? " selected" : "");
+    b.setAttribute("aria-label", date.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })
+      + (count ? `, ${count} meeting${count > 1 ? "s" : ""}` : ""));
+    if (iso === calDay) b.setAttribute("aria-pressed", "true");
+    b.innerHTML = `<span>${date.getDate()}</span><i>${"<b></b>".repeat(Math.min(count, 3))}</i>`;
+    b.onclick = () => {
+      calDay = iso;
+      calMonth = iso.slice(0, 7);
+      renderCalendar();
+    };
+    grid.appendChild(b);
+  }
+  renderCalDay(byDay[calDay] || []);
+}
+
+function renderCalDay(items) {
+  const box = $("#calDay");
+  box.innerHTML = "";
+  const [y, mo, d] = calDay.split("-").map(Number);
+  const h = document.createElement("div");
+  h.className = "group";
+  h.textContent = new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  box.appendChild(h);
+  items.slice().sort((a, b) => (a.time || "").localeCompare(b.time || "")).forEach(m => box.appendChild(listItem(m)));
+  if (!items.length) {
+    const e = document.createElement("div");
+    e.className = "empty";
+    e.textContent = "No meetings this day.";
+    box.appendChild(e);
+  }
+  const plan = document.createElement("button");
+  plan.className = "ghost plan";
+  plan.textContent = "+ Plan a meeting on this day";
+  plan.onclick = () => guard(() => newMeeting(calDay));
+  box.appendChild(plan);
+  highlight();
+}
+
+function showMonth(delta) {
+  const [y, mo] = calMonth.split("-").map(Number);
+  calMonth = isoDay(new Date(y, mo - 1 + delta, 1)).slice(0, 7);
+  renderCalendar();
+}
+
+// List | Calendar tabs. The choice is remembered in this browser only.
+const TAB_KEY = "runsheet-side-tab";
+
+function showTab(cal) {
+  $("#list").hidden = cal;
+  $("#cal").hidden = !cal;
+  $("#tabList").setAttribute("aria-selected", String(!cal));
+  $("#tabCal").setAttribute("aria-selected", String(cal));
+  try { localStorage.setItem(TAB_KEY, cal ? "cal" : ""); } catch (e) {}
+}
+
+function setupTabs() {
+  let cal = false;
+  try { cal = localStorage.getItem(TAB_KEY) === "cal"; } catch (e) {}
+  showTab(cal);
+  $("#tabList").onclick = () => showTab(false);
+  $("#tabCal").onclick = () => showTab(true);
+  $("#calPrev").onclick = () => showMonth(-1);
+  $("#calNext").onclick = () => showMonth(1);
+  $("#calToday").onclick = () => { calDay = today(); calMonth = calDay.slice(0, 7); renderCalendar(); };
 }
 
 function highlight() {
@@ -565,8 +694,10 @@ async function save() {
   }
 }
 
-function newMeeting() {
+// A blank meeting, on the given day if there is one (from the calendar).
+function newMeeting(date) {
   state = blank();
+  if (date) state.fields.date = date;
   markClean();
   renderAll();
   $("#f-title").focus();
@@ -614,7 +745,7 @@ function notes() {
   const bullets = arr => arr.map(x => "- " + x).join("\n");
 
   let o = `${f.title || "Meeting notes"}\n`;
-  o += [f.date, typeName(f.type), f.length ? f.length + " min" : ""].filter(Boolean).join(" \u00b7 ") + "\n\n";
+  o += [f.date, f.time, typeName(f.type), f.length ? f.length + " min" : ""].filter(Boolean).join(" \u00b7 ") + "\n\n";
   if (f.goal) o += `Goal: ${f.goal}\n`;
   const people = attendeesToSave();
   if (people.length) o += `Attendees: ${people.join(", ")}\n`;
@@ -856,6 +987,7 @@ window.addEventListener("beforeunload", e => {
 setupHelp();
 setupMenu();
 setupSidebar();
+setupTabs();
 fillTypeOptions();
 renderAll();
 loadList();

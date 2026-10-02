@@ -307,6 +307,30 @@ try {
     Check 'CSV quotes text and defuses formulas' ($odd.Meeting -eq 'CSV, "quoted"' -and $odd.Action -eq "'=HYPERLINK(`"x`")") "(got $($odd.Meeting) / $($odd.Action))"
     [void](Invoke-Api DELETE "/api/meetings/$($c.Json.id)")
 
+    Write-Host 'Calendar and readiness'
+    # Two meetings on the same day next week: one prepared, one not. They stay for the page checks.
+    $next = (Get-Date).AddDays(7).ToString('yyyy-MM-dd')
+    $u1 = (Invoke-Api POST '/api/meetings' (@{
+        fields  = @{ title = 'Prepared review'; type = 'design'; date = $next; time = '14:00'; goal = 'approve or rework' }
+        checks  = @{ 'before:send-agenda' = $true; 'before:prep-room' = $true; 'during:start-on-time' = $true }
+        agenda  = @(@{ t = 'Risks'; m = 20 })
+        actions = @()
+    } | ConvertTo-Json -Depth 5)).Json.id
+    $u2 = (Invoke-Api POST '/api/meetings' (@{
+        fields  = @{ title = 'Unprepared sync'; type = 'general'; date = $next; time = '09:00' }
+        checks  = @{ 'before:send-agenda' = $true; 'before:prep-room' = $false }
+        actions = @()
+    } | ConvertTo-Json -Depth 5)).Json.id
+    $r = Invoke-Api GET '/api/meetings'
+    $s1 = @($r.Json) | Where-Object { $_.id -eq $u1 }
+    $s2 = @($r.Json) | Where-Object { $_.id -eq $u2 }
+    Check 'summary has start time and prep info' ($s1.time -eq '14:00' -and $s1.hasGoal -eq $true -and $s1.agendaCount -eq 1 -and @($s1.beforeChecks).Count -eq 2 -and $s1.date -eq $next)
+    Check 'summary prep info for an unprepared meeting' ($s2.hasGoal -eq $false -and $s2.agendaCount -eq 0)
+    Check 'one ticked item stays a list' ($r.Body -match ('"id":"' + $u2 + '"[^}]*"beforeChecks":\["send-agenda"\]') -or $r.Body -match ('"beforeChecks":\["send-agenda"\][^}]*"id":"' + $u2 + '"')) ($r.Body -replace '\s+', ' ')
+    Check 'no ticks is an empty list' (@(@($r.Json) | Where-Object { $_.id -eq '20260105-090000-abcdef' })[0].beforeChecks.Count -eq 0 -and $r.Body -match '"beforeChecks":\[\]')
+    $ids = @($r.Json | ForEach-Object { $_.id })
+    Check 'same day sorts by start time (latest first)' ([array]::IndexOf($ids, $u1) -lt [array]::IndexOf($ids, $u2) -and [array]::IndexOf($ids, $u1) -ge 0)
+
     # -----------------------------------------------------------------------
     # Page renders in a real browser (optional)
     # -----------------------------------------------------------------------
@@ -339,6 +363,10 @@ try {
         Check 'agenda editor shows one empty row' ((& $count 'id="ag-t-') -eq 1)
         Check 'attendee list shows one empty row' ((& $count 'id="att-') -eq 1)
         Check 'menu has backup, restore and CSV'  ($dom -match 'id="backupBtn"' -and $dom -match 'id="restoreBtn"' -and $dom -match 'id="csvBtn"')
+        Check 'calendar grid has 42 days'         ((& $count 'class="day') -eq 42) "(got $(& $count 'class="day'))"
+        Check 'list has Upcoming and Past groups' ($dom -match '<div class="group">Upcoming</div>' -and $dom -match '<div class="group">Past</div>')
+        Check 'readiness badges show'             ($dom -match 'class="pill ready">Ready<' -and $dom -match 'class="pill prep">Needs goal, agenda, prep 1/2<')
+        Check 'start time field is present'       ($dom -match 'id="f-time"')
         Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
     }
 } finally {

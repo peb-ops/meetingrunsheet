@@ -89,7 +89,36 @@ textarea{resize:vertical;min-height:72px;line-height:1.55}
 .item .m{font-size:12.5px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .pill{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
 .pill.overdue{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
+.pill.ready{background:color-mix(in srgb,var(--done) 14%,transparent);color:var(--done)}
+.pill.prep{background:var(--accent-soft);color:var(--accent)}
 .empty{color:var(--muted);font-size:13.5px;padding:10px}
+.group{font-size:12px;font-weight:600;color:var(--faint);padding:10px 10px 2px}
+.group:first-child{padding-top:2px}
+
+/* List | Calendar tabs */
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:3px;background:var(--field);border:1px solid var(--line);border-radius:var(--radius-sm)}
+.tabs button{border:0;background:transparent;padding:5px 8px;color:var(--muted);border-radius:6px}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+button.sm{padding:3px 8px;font-size:12.5px}
+button.icon.sm{width:28px;height:28px;font-size:18px}
+
+/* Calendar (renderCalendar in app.js) */
+.cal{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto;margin:0 -6px;padding:0 6px}
+.cal-head{display:flex;align-items:center;gap:4px}
+.cal-head b{flex:1;font-weight:600;font-size:14px;padding-left:4px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-grid .dow{font-size:11px;font-weight:500;color:var(--faint);text-align:center;padding:2px 0}
+.day{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:34px;padding:0;border:1px solid transparent;border-radius:6px;background:transparent;font-size:12.5px;font-weight:400;font-variant-numeric:tabular-nums}
+.day:hover{background:var(--field);border-color:transparent}
+.day.out{color:var(--faint)}
+.day.today span{color:var(--accent);font-weight:700}
+.day.selected{background:var(--accent-soft);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+.day i{display:flex;gap:2px;height:4px}
+.day i b{width:4px;height:4px;border-radius:50%;background:var(--accent)}
+.day.out i b{opacity:.5}
+.cal-list{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--line);padding-top:4px;margin:0 -6px}
+.cal-list .group{padding-top:6px}
+.cal-list .plan{align-self:flex-start;margin:6px 4px 2px}
 
 /* ---- Top bar, "..." menu, confirm bar ---- */
 main{display:flex;flex-direction:column;gap:20px;min-width:0}
