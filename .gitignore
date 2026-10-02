@@ -5,5 +5,7 @@ meetings/
 test-data/
 *.tmp
 
-# Local Claude Code settings
-.claude/settings.local.json
+# Claude Code files stay on this machine
+.claude/
+CLAUDE.md
+SESSION_LOG.md
