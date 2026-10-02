@@ -75,8 +75,8 @@ textarea{resize:vertical;min-height:72px;line-height:1.55}
 @media (max-width:760px){.grid.two,.grid.two.wide-left{grid-template-columns:minmax(0,1fr)}}
 
 /* ---- Sidebar: past meetings ---- */
-/* The column stays in view while the page scrolls. Both cards take their natural height; when
-   they don't fit the window, the meetings list scrolls inside its card and the calendar keeps its size. */
+/* The column stays in view while the page scrolls: the calendar card on top keeps its size, and
+   the meetings list below scrolls inside its card when the two don't fit the window. */
 .side-col{position:sticky;top:16px;display:flex;flex-direction:column;gap:16px;max-height:calc(100vh - 32px);overflow:auto}
 .side{display:flex;flex-direction:column;gap:10px;flex:0 1 auto;min-height:200px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
 .side.cal{flex:none;min-height:0;gap:8px}
