@@ -3,6 +3,11 @@
   Uses $, state and agendaItems() from app.js, and WRAP_UP from content.js.
   Nothing here is saved to the meeting file.
 
+  A running timer survives a page reload: it is kept in localStorage ("runsheet-timer") with the
+  id of its meeting. After a reload the page reopens that meeting and the bar carries on where it
+  was (an unsaved meeting resumes when its draft is restored). Stop clears it; one older than
+  12 hours is dropped.
+
   The agenda is read once when you press Start meeting. Each item counts down its minutes;
   the clock turns amber near the end (5 min left, or 1 min for items under 10 min) and red
   when the item runs over. Next item moves on; on the last item the button becomes Wrap up,
@@ -12,7 +17,10 @@
 */
 
 const PAGE_TITLE = document.title;
-const timer = { items: [], hasAgenda: false, wrapUp: false, index: 0, start: 0, itemStart: 0, totalMin: 0, tick: null };
+const timer = { meeting: "", items: [], hasAgenda: false, wrapUp: false, index: 0, start: 0, itemStart: 0, totalMin: 0, tick: null };
+const TIMER_KEY = "runsheet-timer";
+const TIMER_MAX_AGE = 12 * 3600 * 1000;
+const UNSAVED = "unsaved";   // stands in for the id of a meeting that hasn't been saved yet
 
 // Seconds as "m:ss".
 function clock(sec) {
@@ -35,6 +43,7 @@ function startTimer() {
 
   const now = Date.now();
   Object.assign(timer, {
+    meeting: state.id || UNSAVED,
     items,
     hasAgenda: agenda.length > 0,
     wrapUp: false,
@@ -43,11 +52,16 @@ function startTimer() {
     itemStart: now,
     totalMin: timebox || items.reduce((sum, it) => sum + (it.min || 0), 0),
   });
+  showTimer();
+}
+
+function showTimer() {
   $("#timerBar").hidden = false;
   $("#timerBtn").hidden = true;
   clearInterval(timer.tick);
   timer.tick = setInterval(renderTimer, 1000);
   renderTimer();
+  storeTimer();
 }
 
 function stopTimer() {
@@ -56,6 +70,40 @@ function stopTimer() {
   $("#timerBar").hidden = true;
   $("#timerBtn").hidden = false;
   document.title = PAGE_TITLE;
+  try { localStorage.removeItem(TIMER_KEY); } catch (e) {}
+}
+
+/* ---- Keeping the timer across a reload ---- */
+
+function storeTimer() {
+  const { meeting, items, hasAgenda, wrapUp, index, start, itemStart, totalMin } = timer;
+  try { localStorage.setItem(TIMER_KEY, JSON.stringify({ meeting, items, hasAgenda, wrapUp, index, start, itemStart, totalMin })); } catch (e) {}
+}
+
+// The stored timer, or null if there is none or it is too old to be the same meeting.
+function storedTimer() {
+  let t = null;
+  try { t = JSON.parse(localStorage.getItem(TIMER_KEY) || "null"); } catch (e) {}
+  if (!t || !t.meeting || !Array.isArray(t.items) || !t.items.length || !(Date.now() - t.start < TIMER_MAX_AGE)) return null;
+  return t;
+}
+
+// Picks up the stored timer if it belongs to this meeting (a saved id, or UNSAVED after a draft
+// restore). Called by renderAll() and offerDraft() in app.js. Does nothing while a timer is running.
+function resumeTimer(meeting) {
+  if (timer.tick || !meeting) return;
+  const t = storedTimer();
+  if (!t || t.meeting !== meeting) return;
+  Object.assign(timer, t);
+  showTimer();
+}
+
+// A meeting that was unsaved when its timer started has just been saved and got an id.
+function timerMeetingSaved(id) {
+  if (timer.tick && timer.meeting === UNSAVED) {
+    timer.meeting = id;
+    storeTimer();
+  }
 }
 
 // Next item, or Wrap up after the last one.
@@ -67,6 +115,7 @@ function nextItem() {
     timer.wrapUp = true;
   }
   renderTimer();
+  storeTimer();
 }
 
 function renderTimer() {
@@ -106,3 +155,12 @@ function renderTimer() {
 $("#timerBtn").onclick = startTimer;
 $("#tNext").onclick = nextItem;
 $("#tStop").onclick = stopTimer;
+
+// After a reload: reopen the meeting whose timer was running (renderAll then resumes it).
+// If a draft restore is on offer, leave it to that instead.
+(function reopenTimedMeeting() {
+  const t = storedTimer();
+  if (!t) { try { localStorage.removeItem(TIMER_KEY); } catch (e) {} return; }
+  if (t.meeting === state.id) resumeTimer(t.meeting);
+  else if (t.meeting !== UNSAVED && $("#confirmBox").hidden) openMeeting(t.meeting);
+})();

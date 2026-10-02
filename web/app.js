@@ -139,44 +139,6 @@ function agendaFromText(text) {
   });
 }
 
-function renderAgenda() {
-  const tbody = $("#agendaRows");
-  tbody.innerHTML = "";
-  state.agenda.forEach((row, i) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="n">${i + 1}</td>
-      <td><input type="text" id="ag-t-${i}" aria-label="Agenda item ${i + 1}" placeholder="${i ? "Next item" : "e.g. Context and goal"}"></td>
-      <td class="min"><input type="number" id="ag-m-${i}" min="1" step="1" aria-label="Minutes for item ${i + 1}" placeholder="min"></td>
-      <td class="mv"><button data-mv="-1" aria-label="Move up">&uarr;</button><button data-mv="1" aria-label="Move down">&darr;</button></td>
-      <td class="x"><button aria-label="Remove item">&times;</button></td>`;
-
-    const title = tr.querySelector(`#ag-t-${i}`);
-    const min = tr.querySelector(`#ag-m-${i}`);
-    title.value = row.t || "";
-    min.value = row.m ?? "";
-    title.oninput = () => { row.t = title.value; agendaChanged(); };
-    min.oninput = () => { row.m = min.value === "" ? null : +min.value; agendaChanged(); };
-    // Enter adds the next item, so a whole agenda can be typed without the mouse.
-    [title, min].forEach(input => input.onkeydown = e => {
-      if (e.key === "Enter") { e.preventDefault(); addAgendaRow(i + 1); }
-    });
-
-    tr.querySelectorAll("[data-mv]").forEach(b => {
-      const to = i + +b.dataset.mv;
-      b.disabled = to < 0 || to >= state.agenda.length;
-      b.onclick = () => moveAgendaRow(i, to);
-    });
-    tr.querySelector("td.x button").onclick = () => {
-      state.agenda.splice(i, 1);
-      if (!state.agenda.length) state.agenda.push(blankAgendaRow());
-      agendaChanged();
-      renderAgenda();
-    };
-
-    tbody.appendChild(tr);
-  });
-}
-
 /* ---- Attendees: a list of names ---- */
 
 const attendeesToSave = () => (state.attendees || []).map(n => n.trim()).filter(Boolean);
@@ -184,56 +146,102 @@ const attendeesToSave = () => (state.attendees || []).map(n => n.trim()).filter(
 // Before v1.5.0 attendees were one text field ("Eng lead, QA lead, design").
 const attendeesFromText = text => String(text || "").split(/[,;\n]/).map(n => n.trim()).filter(Boolean);
 
-function renderAttendees() {
-  const tbody = $("#attendeeRows");
-  tbody.innerHTML = "";
-  state.attendees.forEach((name, i) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td><input type="text" id="att-${i}" aria-label="Attendee ${i + 1}" placeholder="${i ? "Next person" : "e.g. QA lead"}"></td>
-      <td class="x"><button aria-label="Remove person">&times;</button></td>`;
+/* ---- Row editors: the agenda and attendee tables ----
+   One row per entry. Enter in a row adds the next one, x removes a row (the last row is
+   emptied instead), and with movable: true each row gets up/down arrows.
+     list()           the array being edited (looked up each time, because state gets replaced)
+     blank()          a new empty entry
+     cells(row, i)    HTML for the row's own cells (the arrows and x are added here)
+     bind(tr, row, i) fills the row's inputs and wires them up; returns the inputs
+     changed()        called after any edit                                            */
+function rowEditor({ tbody, list, blank, cells, bind, changed, movable = false, removeLabel }) {
+  const ed = {};
+
+  ed.render = () => {
+    const rows = list();
+    tbody.innerHTML = "";
+    rows.forEach((row, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = cells(row, i)
+        + (movable ? `<td class="mv"><button data-mv="-1" aria-label="Move up">&uarr;</button><button data-mv="1" aria-label="Move down">&darr;</button></td>` : "")
+        + `<td class="x"><button aria-label="${removeLabel}">&times;</button></td>`;
+      // Enter adds the next row, so a whole list can be typed without the mouse.
+      bind(tr, row, i).forEach(input => input.onkeydown = e => {
+        if (e.key === "Enter") { e.preventDefault(); ed.add(i + 1); }
+      });
+      tr.querySelectorAll("[data-mv]").forEach(b => {
+        const to = i + +b.dataset.mv;
+        b.disabled = to < 0 || to >= rows.length;
+        b.onclick = () => ed.move(i, to);
+      });
+      tr.querySelector("td.x button").onclick = () => {
+        rows.splice(i, 1);
+        if (!rows.length) rows.push(blank());
+        changed();
+        ed.render();
+      };
+      tbody.appendChild(tr);
+    });
+  };
+
+  ed.add = at => {
+    list().splice(at, 0, blank());
+    changed();
+    ed.render();
+    tbody.rows[at].querySelector("input").focus();
+  };
+
+  ed.move = (from, to) => {
+    const rows = list();
+    rows.splice(to, 0, rows.splice(from, 1)[0]);
+    changed();
+    ed.render();
+    // Keep focus on the same arrow so the row can be moved several places with the keyboard.
+    const arrow = tbody.rows[to].querySelector(`[data-mv="${to > from ? 1 : -1}"]`);
+    (arrow.disabled ? tbody.rows[to].querySelector("input") : arrow).focus();
+  };
+
+  return ed;
+}
+
+const agendaChanged = () => { markDirty(); showAgendaSum(); };
+
+const agendaEditor = rowEditor({
+  tbody: $("#agendaRows"),
+  list: () => state.agenda,
+  blank: blankAgendaRow,
+  movable: true,
+  removeLabel: "Remove item",
+  changed: agendaChanged,
+  cells: (row, i) => `<td class="n">${i + 1}</td>
+    <td><input type="text" id="ag-t-${i}" aria-label="Agenda item ${i + 1}" placeholder="${i ? "Next item" : "e.g. Context and goal"}"></td>
+    <td class="min"><input type="number" id="ag-m-${i}" min="1" step="1" aria-label="Minutes for item ${i + 1}" placeholder="min"></td>`,
+  bind: (tr, row, i) => {
+    const title = tr.querySelector(`#ag-t-${i}`);
+    const min = tr.querySelector(`#ag-m-${i}`);
+    title.value = row.t || "";
+    min.value = row.m ?? "";
+    title.oninput = () => { row.t = title.value; agendaChanged(); };
+    min.oninput = () => { row.m = min.value === "" ? null : +min.value; agendaChanged(); };
+    return [title, min];
+  },
+});
+
+// Attendees are plain strings, so edits write back by index.
+const attendeeEditor = rowEditor({
+  tbody: $("#attendeeRows"),
+  list: () => state.attendees,
+  blank: () => "",
+  removeLabel: "Remove person",
+  changed: markDirty,
+  cells: (name, i) => `<td><input type="text" id="att-${i}" aria-label="Attendee ${i + 1}" placeholder="${i ? "Next person" : "e.g. QA lead"}"></td>`,
+  bind: (tr, name, i) => {
     const input = tr.querySelector("input");
     input.value = name;
     input.oninput = () => { state.attendees[i] = input.value; markDirty(); };
-    // Enter adds the next person, like the agenda.
-    input.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addAttendee(i + 1); } };
-    tr.querySelector("td.x button").onclick = () => {
-      state.attendees.splice(i, 1);
-      if (!state.attendees.length) state.attendees.push("");
-      markDirty();
-      renderAttendees();
-    };
-    tbody.appendChild(tr);
-  });
-}
-
-function addAttendee(at) {
-  state.attendees.splice(at, 0, "");
-  markDirty();
-  renderAttendees();
-  $(`#att-${at}`).focus();
-}
-
-function agendaChanged() {
-  markDirty();
-  showAgendaSum();
-}
-
-function addAgendaRow(at) {
-  state.agenda.splice(at, 0, blankAgendaRow());
-  agendaChanged();
-  renderAgenda();
-  $(`#ag-t-${at}`).focus();
-}
-
-function moveAgendaRow(from, to) {
-  const [row] = state.agenda.splice(from, 1);
-  state.agenda.splice(to, 0, row);
-  agendaChanged();
-  renderAgenda();
-  // Keep focus on the same arrow so the row can be moved several places with the keyboard.
-  const arrow = document.querySelector(`#agendaRows tr:nth-child(${to + 1}) [data-mv="${to > from ? 1 : -1}"]`);
-  (arrow.disabled ? $(`#ag-t-${to}`) : arrow).focus();
-}
+    return [input];
+  },
+});
 
 // The line under the agenda: total minutes against the timebox, and items missing minutes.
 function showAgendaSum() {
@@ -424,13 +432,14 @@ function renderAll() {
   if (!typeSel.value) typeSel.value = "general";
   showTip();
   showFollows();
-  renderAttendees();
-  renderAgenda();
+  attendeeEditor.render();
+  agendaEditor.render();
   showAgendaSum();
   renderPhases();
   renderActions();
   setStatus();
   highlight();
+  if (typeof resumeTimer === "function") resumeTimer(state.id);   // timer.js loads after this file
 }
 
 /* ---- Sidebar: meeting list ---- */
@@ -544,6 +553,7 @@ async function save() {
     const m = state.id
       ? await api("PUT", "/api/meetings/" + state.id, body)
       : await api("POST", "/api/meetings", body);
+    if (!state.id) timerMeetingSaved(m.id);
     state.id = m.id;
     state.savedAt = m.savedAt;
     markClean();
@@ -666,6 +676,7 @@ function offerDraft() {
   ask(`Unsaved changes to "${title}" from ${when} were found. Restore them?`, "Restore", () => {
     state = fromSaved(draft.state);
     renderAll();
+    resumeTimer(state.id || UNSAVED);
     markDirty();
   }, clearDraft);
 }
@@ -716,6 +727,35 @@ function closeHelp() {
     row.classList.remove("open");
     row.querySelector(".help").setAttribute("aria-expanded", "false");
   });
+}
+
+/* ---- Backup, restore, CSV export ("..." menu) ---- */
+
+// Downloads go through a link with "download", so the page isn't unloaded (no unsaved-changes prompt).
+function download(url) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// Sends a backup zip to the server, which adds the meetings that aren't here yet.
+async function restoreBackup(file) {
+  try {
+    const r = await fetch("/api/backup", { method: "POST", headers: { "X-Run-Sheet": "1", "Content-Type": "application/zip" }, body: file });
+    let data = null;
+    try { data = await r.json(); } catch (e) {}
+    if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
+    const parts = [`Restored ${data.added} meeting${data.added === 1 ? "" : "s"}`];
+    if (data.skipped) parts.push(`${data.skipped} already here`);
+    if (data.invalid) parts.push(`${data.invalid} unreadable`);
+    toast(parts.join(", "));
+    loadList();
+  } catch (e) {
+    toast("Restore failed: " + e.message);
+  }
 }
 
 /* ---- Top bar: "..." menu and the meetings sidebar toggle ---- */
@@ -788,9 +828,17 @@ $("#newBtn").onclick = () => guard(newMeeting);
 $("#followBtn").onclick = () => guard(followUp);
 $("#deleteBtn").onclick = () => ask(`Delete "${state.fields.title || "Untitled meeting"}" permanently?`, "Delete", deleteMeeting);
 $("#addAction").onclick = addAction;
-$("#addAgenda").onclick = () => addAgendaRow(state.agenda.length);
-$("#addAttendee").onclick = () => addAttendee(state.attendees.length);
+$("#addAgenda").onclick = () => agendaEditor.add(state.agenda.length);
+$("#addAttendee").onclick = () => attendeeEditor.add(state.attendees.length);
 $("#copyBtn").onclick = copyNotes;
+$("#backupBtn").onclick = () => download("/api/backup");
+$("#csvBtn").onclick = () => download("/api/actions.csv");
+$("#restoreBtn").onclick = () => $("#restoreFile").click();
+$("#restoreFile").onchange = e => {
+  const file = e.target.files[0];
+  e.target.value = "";   // so picking the same file again still fires
+  if (file) restoreBackup(file);
+};
 
 document.addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {

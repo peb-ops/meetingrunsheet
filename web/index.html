@@ -41,9 +41,15 @@
           <div class="menu" id="moreMenu" role="menu" hidden>
             <button role="menuitem" id="copyBtn">Copy notes</button>
             <button role="menuitem" id="followBtn" title="New meeting with the same brief and any open actions">Follow-up meeting</button>
+            <hr>
+            <button role="menuitem" id="backupBtn" title="Every saved meeting in one zip file">Download backup (.zip)</button>
+            <button role="menuitem" id="restoreBtn" title="Adds meetings from a backup zip; never overwrites one you have">Restore from backup...</button>
+            <button role="menuitem" id="csvBtn" title="Every action from every meeting, for Excel or a tracker import">Export actions (CSV)</button>
+            <hr>
             <button role="menuitem" class="danger" id="deleteBtn" hidden>Delete meeting</button>
           </div>
         </div>
+        <input type="file" id="restoreFile" accept=".zip,application/zip" hidden>
       </div>
     </header>
 
@@ -78,13 +84,13 @@
     </section>
 
     <div class="grid two wide-left">
-      <!-- Agenda: rows built by renderAgenda() in app.js, saved as meeting.agenda -->
+      <!-- Agenda: rows built by agendaEditor (rowEditor in app.js), saved as meeting.agenda -->
       <section class="card">
         <span class="card-title" data-for="agendaRows" data-help="One row per item, with its minutes. Put decision items first, while energy is high. The minutes should add up to the timebox. Press Enter in a row to add the next item.">Agenda</span>
         <table class="row-table"><tbody id="agendaRows"></tbody></table>
         <div class="row-foot"><button class="ghost" id="addAgenda">+ Add item</button><div class="agenda-sum" id="agendaSum" aria-live="polite" hidden></div></div>
       </section>
-      <!-- Attendees: rows built by renderAttendees() in app.js, saved as meeting.attendees -->
+      <!-- Attendees: rows built by attendeeEditor (rowEditor in app.js), saved as meeting.attendees -->
       <section class="card">
         <span class="card-title" data-for="attendeeRows" data-help="Deciders and key information holders only. Everyone else gets the notes. Press Enter in a row to add the next person.">Attendees</span>
         <table class="row-table"><tbody id="attendeeRows"></tbody></table>

@@ -14,6 +14,9 @@ using module .\WebRoot.psm1
 #   GET    /api/meetings/{id}  read
 #   PUT    /api/meetings/{id}  update
 #   DELETE /api/meetings/{id}  delete
+#   GET    /api/backup         zip of every meeting file (download)
+#   POST   /api/backup         restore: body is a backup zip; adds missing meetings, never overwrites
+#   GET    /api/actions.csv    every action in every meeting (download)
 # Saving or deleting a follow-up also updates "carried" on its original meeting (see MeetingStore).
 
 class RunSheetServer {
@@ -100,6 +103,28 @@ class RunSheetServer {
             }
         }
 
+        if ($path -eq '/api/backup') {
+            switch ($method) {
+                'GET' {
+                    $name = 'meetings-backup-' + (Get-Date -Format 'yyyyMMdd-HHmm') + '.zip'
+                    $this.SendDownload($ctx, $this.Store.BackupZip(), 'application/zip', $name); return
+                }
+                'POST' {
+                    if ($req.ContentLength64 -gt 100MB) { $this.SendJson($ctx, @{ error = 'Backup file is too large' }, 413); return }
+                    $result = $this.Store.RestoreZip($this.ReadBytes($req))
+                    if ($null -eq $result) { $this.SendJson($ctx, @{ error = "That file isn't a backup zip" }, 400); return }
+                    $this.SendJson($ctx, $result, 200); return
+                }
+            }
+        }
+
+        if ($path -eq '/api/actions.csv' -and $method -eq 'GET') {
+            # With a BOM, so Excel reads the text as UTF-8.
+            $bytes = [byte[]](@(0xEF, 0xBB, 0xBF) + $this.Utf8.GetBytes($this.Store.ActionsCsv()))
+            $name = 'meeting-actions-' + (Get-Date -Format 'yyyyMMdd') + '.csv'
+            $this.SendDownload($ctx, $bytes, 'text/csv; charset=utf-8', $name); return
+        }
+
         $m = [regex]::Match($path, '^/api/meetings/([^/]+)$')
         if ($m.Success -and [MeetingStore]::IsValidId($m.Groups[1].Value)) {
             $id = $m.Groups[1].Value
@@ -121,6 +146,18 @@ class RunSheetServer {
     hidden [string] ReadBody([System.Net.HttpListenerRequest] $request) {
         $reader = New-Object System.IO.StreamReader($request.InputStream, $this.Utf8)
         try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    }
+
+    hidden [byte[]] ReadBytes([System.Net.HttpListenerRequest] $request) {
+        $buffer = New-Object System.IO.MemoryStream
+        $request.InputStream.CopyTo($buffer)
+        return $buffer.ToArray()
+    }
+
+    # A file the browser saves instead of showing.
+    hidden [void] SendDownload([System.Net.HttpListenerContext] $ctx, [byte[]] $bytes, [string] $contentType, [string] $fileName) {
+        $ctx.Response.Headers['Content-Disposition'] = "attachment; filename=`"$fileName`""
+        $this.Send($ctx, 200, $bytes, $contentType)
     }
 
     hidden [void] Send([System.Net.HttpListenerContext] $ctx, [int] $status, [byte[]] $bytes, [string] $contentType) {

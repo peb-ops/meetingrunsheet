@@ -4,6 +4,7 @@
 #   $store.List('crash')                       # summaries, newest first
 #   $store.Exists($id); $store.ReadRaw($id)
 #   $store.Create($json); $store.Update($json, $id); $store.Remove($id)
+#   $store.BackupZip(); $store.RestoreZip($bytes); $store.ActionsCsv()
 #
 # Files are UTF-8 without BOM and written temp-then-move, so a crash never leaves
 # a half-written meeting.
@@ -106,6 +107,100 @@ class MeetingStore {
         }
         return @($items | Sort-Object -Property @{ Expression = { "$($_.date)" }; Descending = $true },
                                                 @{ Expression = { "$($_.savedAt)" }; Descending = $true })
+    }
+
+    # ---- Backup, restore and export ----
+    # Zip types are named as strings (New-Object), not [type] literals: Windows PowerShell 5.1
+    # resolves literals when the class is parsed, before Add-Type has loaded the assembly.
+
+    # Every meeting file in one zip, as stored (<id>.json at the top level).
+    [byte[]] BackupZip() {
+        Add-Type -AssemblyName System.IO.Compression
+        $buffer = New-Object System.IO.MemoryStream
+        $zip = New-Object System.IO.Compression.ZipArchive($buffer, 'Create', $true)
+        try {
+            foreach ($file in [System.IO.Directory]::GetFiles($this.Root, '*.json')) {
+                $bytes = [System.IO.File]::ReadAllBytes($file)
+                $entry = $zip.CreateEntry([System.IO.Path]::GetFileName($file))
+                $stream = $entry.Open()
+                try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+            }
+        } finally {
+            $zip.Dispose()   # writes the zip's directory, so it must happen before ToArray
+        }
+        return $buffer.ToArray()
+    }
+
+    # Adds the meetings in a backup zip. Never overwrites: an id that is already here is skipped.
+    # Only top-level "<id>.json" entries with a valid id and a readable meeting are used, and entry
+    # names are only ever matched against the id pattern, never used as paths.
+    # Returns {added, skipped, invalid}, or $null if the bytes aren't a zip.
+    [object] RestoreZip([byte[]] $bytes) {
+        Add-Type -AssemblyName System.IO.Compression
+        if ($bytes.Length -lt 4 -or $bytes[0] -ne 0x50 -or $bytes[1] -ne 0x4B) { return $null }   # "PK"
+        $zip = $null
+        try {
+            $zip = New-Object System.IO.Compression.ZipArchive((New-Object System.IO.MemoryStream(, $bytes)), 'Read')
+        } catch {
+            return $null
+        }
+        $added = 0; $skipped = 0; $invalid = 0
+        try {
+            foreach ($entry in $zip.Entries) {
+                if (-not $entry.Name) { continue }   # a folder
+                $m = [regex]::Match($entry.FullName, '^([A-Za-z0-9-]{1,64})\.json$')
+                if (-not $m.Success -or $entry.Length -gt 5MB) { $invalid++; continue }
+                $id = $m.Groups[1].Value
+                if ($this.Exists($id)) { $skipped++; continue }
+
+                $text = ''   # 5.1 classes reject a variable that is only assigned inside try
+                $reader = New-Object System.IO.StreamReader($entry.Open(), $this.Utf8)
+                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+                $meeting = $null
+                try { $meeting = $text | ConvertFrom-Json } catch { }
+                if (-not $meeting -or -not $meeting.fields -or ($meeting.id -and [string]$meeting.id -ne $id)) { $invalid++; continue }
+
+                $path = $this.PathOf($id)
+                [System.IO.File]::WriteAllText("$path.tmp", $text, $this.Utf8)
+                Move-Item -LiteralPath "$path.tmp" -Destination $path -Force -ErrorAction Stop
+                $added++
+            }
+        } finally {
+            $zip.Dispose()
+        }
+        return [pscustomobject]@{ added = $added; skipped = $skipped; invalid = $invalid }
+    }
+
+    # Every action in every meeting as CSV text, newest meeting first.
+    # Status is open, overdue, done or carried (moved to a follow-up meeting).
+    [string] ActionsCsv() {
+        $today = (Get-Date).ToString('yyyy-MM-dd')
+        $sb = New-Object System.Text.StringBuilder
+        [void]$sb.Append("Meeting date,Meeting,Action,Owner,Due,Ticket,Status,Meeting id`r`n")
+        foreach ($s in $this.List('')) {
+            $m = $this.Read($s.id)
+            foreach ($a in @($m.actions)) {
+                if (-not $a.a) { continue }
+                $due = [MeetingStore]::DayText($a.d)
+                $status = 'open'
+                if ($a.done) { $status = 'done' }
+                elseif ($a.carried) { $status = 'carried' }
+                elseif ($due -and $due -lt $today) { $status = 'overdue' }
+                $cells = foreach ($v in @([MeetingStore]::DayText($s.date), $s.title, $a.a, $a.o, $due, $a.t, $status, $s.id)) {
+                    [MeetingStore]::CsvCell($v)
+                }
+                [void]$sb.Append(($cells -join ',') + "`r`n")
+            }
+        }
+        return $sb.ToString()
+    }
+
+    # One quoted CSV value. Text starting with = + - @ (or a tab / CR) gets a leading ' so
+    # Excel shows it instead of running it as a formula.
+    static [string] CsvCell([object] $value) {
+        $text = [string]$value
+        if ($text -match '^[=+\-@\t\r]') { $text = "'" + $text }
+        return '"' + $text.Replace('"', '""') + '"'
     }
 
     # ---- Internals ----
