@@ -20,11 +20,11 @@ const PHASES = [
   ]},
   { id: "during", name: "During", items: [
     ["start-on-time", "Start on time", "Don't reward late arrivals by recapping from the start."],
-    ["state-goal", "State goal, timebox and decision owner", "\"We have 30 minutes and we leave with...\""],
+    ["state-goal", "State the goal and timebox", "\"We have 30 minutes and we leave with...\""],
     ["park-tangents", "Park tangents out loud", "Write them in the parking lot, name who follows up, move on."],
     ["quiet-voices", "Bring in quieter voices", "Ask QA, tech art and juniors directly. They often spot the risk."],
     ["stay-neutral", "Stay neutral while facilitating", "Say when you step out of the role to give your own view."],
-    ["call-decision", "Paraphrase, then call the decision", "\"So what I'm hearing is...\", then the decision owner calls it, or \"disagree and commit\"."],
+    ["call-decision", "Paraphrase, then call the decision", "\"So what I'm hearing is...\", then make the call, or \"disagree and commit\"."],
     ["read-back", "Read back decisions and actions", "Each action gets one owner and a due date, in the room."],
     ["end-on-time", "End on time or early", "Give the time back if you've met the goal."],
   ]},
