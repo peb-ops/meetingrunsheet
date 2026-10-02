@@ -1,6 +1,6 @@
 /*
   Section nav: a floating list of the page's sections, so you can jump without scrolling.
-  Uses $ from app.js and PHASES from content.js. Nothing here is saved.
+  Uses $ from app.js. Nothing here is saved.
 
   Wide windows show the list in the right margin all the time. Narrower windows show a
   Sections button in the bottom-right corner that opens it (Esc or a click elsewhere closes it).
@@ -16,7 +16,6 @@ const NAV_TARGETS = [
   ["Actions", () => $("#actionRows").closest(".card"), null, true],
   ["Decisions", () => $("#f-decisions").closest(".card"), "#f-decisions", false],
   ["Parking lot", () => $("#f-parking").closest(".card"), "#f-parking", false],
-  ...PHASES.map((p, i) => [p.name, () => $("#c-" + p.id).closest(".phase"), null, i === 0]),
   ["Self-review", () => $("#f-reflect").closest(".card"), "#f-reflect", true],
 ];
 
