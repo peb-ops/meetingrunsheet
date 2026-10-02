@@ -87,6 +87,12 @@ All JSON. Non-GET requests must send header `X-Run-Sheet: 1` (CSRF guard). Host 
 
 ## Page features
 
+Layout, in order of importance (v1.6.0): top bar (sidebar toggle, save status, Start meeting, Save, "..." menu
+with Copy notes / Follow-up meeting / Delete); hero card (title as a large inline input, the goal highlighted,
+then a row of Type / Date / Timebox / Note-taker, then the type tip); Agenda | Attendees; Action items;
+Decisions | Parking lot; Facilitation checklist (Before / During / After side by side); Self-review. Cards,
+sentence-case labels, system fonts; colours are tokens at the top of styles.css. The meetings sidebar can be
+hidden (`setupSidebar()`, remembered in localStorage `runsheet-side-off`).
 Sidebar list with search and "N open" / "N overdue" badges; brief (with per-type tips; attendees as a list of
 name rows, Enter adds the next); agenda editor (rows of
 item + minutes, Add item, Enter adds the next row, up/down arrows, remove) with a check line under it (total vs
@@ -103,8 +109,8 @@ back to the original), Delete (inline confirm, no browser dialogs).
 Unsaved work is kept as a draft in localStorage (`runsheet-draft`) and offered for restore on the next load.
 Field advice lives in `data-help` on the label and shows as a (?) tooltip (hover, or click/tap to pin; Esc closes);
 placeholders hold only short examples, because they get cut off and vanish once you type.
-Section nav (`NAV_TARGETS` in nav.js): Brief, Agenda, each phase, Decisions, Parking lot, Actions, Self-review;
-always shown in the right margin at 1660px and wider, otherwise a Sections button bottom right; highlights the
+Section nav (`NAV_TARGETS` in nav.js, same order as the page): Brief, Agenda, Actions, Decisions, Parking lot,
+each phase, Self-review; always shown in the right margin at 1700px and wider, otherwise a Sections button bottom right; highlights the
 current section, lands below the timer bar, and focuses the notes box for Decisions / Parking lot / Self-review.
 Warns on unsaved changes. Light and dark themes via `prefers-color-scheme`. No external resources (works offline).
 
@@ -148,6 +154,9 @@ Warns on unsaved changes. Light and dark themes via `prefers-color-scheme`. No e
 - v1.4.0 - floating section nav (`web\nav.js`) to jump between sections without scrolling. Tests: 48 checks.
 - v1.5.0 - attendees are a list (`attendees: [...]`, old text split on open); Decision owner box removed;
   Note-taker tooltip no longer says "Ideally not you". Tests: 50 checks.
+- v1.6.0 - modern restyle (cards, system fonts, sentence-case labels, indigo accent) and page reordered by
+  importance: title + goal hero, agenda | attendees, actions, decisions | parking lot, checklist, self-review.
+  Copy notes / Follow-up / Delete moved to a "..." menu; collapsible meetings sidebar. Element ids unchanged.
 
 ## Ideas not yet built
 

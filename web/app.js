@@ -287,8 +287,8 @@ function renderPhases() {
   wrap.innerHTML = "";
   PHASES.forEach((p, pi) => {
     const sec = document.createElement("div");
-    sec.className = "panel phase";
-    sec.innerHTML = `<div class="phase-head"><h3><span class="num">0${pi + 1}</span>${p.name}</h3><span class="count" id="c-${p.id}"></span></div>`
+    sec.className = "phase";
+    sec.innerHTML = `<div class="phase-head"><h3><span class="num">${pi + 1}</span>${p.name}</h3><span class="count" id="c-${p.id}"></span></div>`
       + `<div class="bar" id="b-${p.id}"><i></i></div><ul class="checks"></ul>`;
     const ul = sec.querySelector("ul");
 
@@ -718,6 +718,41 @@ function closeHelp() {
   });
 }
 
+/* ---- Top bar: "..." menu and the meetings sidebar toggle ---- */
+
+// The "..." menu holds the less-used commands. Picking one, Esc or a click elsewhere closes it.
+function setupMenu() {
+  const btn = $("#moreBtn");
+  const menu = $("#moreMenu");
+  const setOpen = open => {
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+  };
+  btn.onclick = () => setOpen(menu.hidden);
+  menu.addEventListener("click", e => { if (e.target.closest("button")) setOpen(false); });
+  document.addEventListener("click", e => { if (!e.target.closest(".menu-wrap")) setOpen(false); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") setOpen(false); });
+}
+
+// Hiding the sidebar gives the run sheet the full width during a meeting.
+// Remembered in this browser only; the page works the same without it.
+const SIDE_KEY = "runsheet-side-off";
+
+function setSidebar(off) {
+  $("#app").classList.toggle("side-off", off);
+  const btn = $("#sideBtn");
+  btn.setAttribute("aria-expanded", String(!off));
+  btn.title = off ? "Show meetings list" : "Hide meetings list";
+  try { localStorage.setItem(SIDE_KEY, off ? "1" : ""); } catch (e) {}
+}
+
+function setupSidebar() {
+  let off = false;
+  try { off = localStorage.getItem(SIDE_KEY) === "1"; } catch (e) {}
+  setSidebar(off);
+  $("#sideBtn").onclick = () => setSidebar(!$("#app").classList.contains("side-off"));
+}
+
 /* ---- Wire up events and start ---- */
 
 FIELDS.forEach(f => {
@@ -771,6 +806,8 @@ window.addEventListener("beforeunload", e => {
 });
 
 setupHelp();
+setupMenu();
+setupSidebar();
 fillTypeOptions();
 renderAll();
 loadList();

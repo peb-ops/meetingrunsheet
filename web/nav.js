@@ -9,14 +9,15 @@
 
 // [label, section element, box to focus or null, starts a new group]. Elements are looked up
 // on every use, because renderPhases() rebuilds the checklist.
+// Same order as the page.
 const NAV_TARGETS = [
   ["Brief", () => $("#briefH").closest("section"), null, false],
-  ["Agenda", () => $("#agendaRows").closest(".field"), null, false],
+  ["Agenda", () => $("#agendaRows").closest(".card"), null, false],
+  ["Actions", () => $("#actionRows").closest(".card"), null, true],
+  ["Decisions", () => $("#f-decisions").closest(".card"), "#f-decisions", false],
+  ["Parking lot", () => $("#f-parking").closest(".card"), "#f-parking", false],
   ...PHASES.map((p, i) => [p.name, () => $("#c-" + p.id).closest(".phase"), null, i === 0]),
-  ["Decisions", () => $("#f-decisions").closest(".field"), "#f-decisions", true],
-  ["Parking lot", () => $("#f-parking").closest(".field"), "#f-parking", false],
-  ["Actions", () => $("#actionRows").closest(".full"), null, false],
-  ["Self-review", () => $("#f-reflect").closest(".field"), "#f-reflect", false],
+  ["Self-review", () => $("#f-reflect").closest(".card"), "#f-reflect", true],
 ];
 
 const nav = $("#jumpNav");

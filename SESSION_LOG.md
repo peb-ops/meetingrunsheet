@@ -75,3 +75,13 @@
 - `tests/Run-Tests.ps1`: +2 checks (a one-name attendees list stays a list on 5.1; the attendee editor renders); tooltip count 8 -> 7. 50/50 pass on 5.1.
 - `CLAUDE.md`: data format, page features, v1.5.0 history.
 - Not tested: PowerShell 7, clicking through the attendee editor in a real browser.
+
+## 2026-10-02 (v1.6.0: modern restyle, layout by importance)
+
+- `web/index.html`: reordered by importance: top bar -> hero (title, goal, Type/Date/Timebox/Note-taker row, type tip) -> Agenda | Attendees -> Action items -> Decisions | Parking lot -> Facilitation checklist -> Self-review. Copy notes / Follow-up / Delete moved into a "..." menu. Sidebar toggle button. All element ids unchanged.
+- `web/styles.css`: rewritten: cards with soft shadow, 12px radius, system fonts (Segoe UI Variable), sentence-case labels, indigo accent, light + dark tokens; narrow grid uses minmax(0,1fr); nav margin breakpoint 1660 -> 1700px.
+- `web/app.js`: `setupMenu()` ("..." menu, closes on pick/Esc/outside click), `setupSidebar()` (hide/show the meetings list, remembered in localStorage `runsheet-side-off`, try/catch); phase numbers "1" not "01"; phases no longer use the panel class.
+- `web/nav.js`: NAV_TARGETS reordered to match the page (still 9 entries); targets use `.card`.
+- Tests unchanged, 50/50 pass on 5.1. Checked headless-Edge screenshots (dark 1440px, light 1440px, 500px) from a scratchpad copy that auto-opens a sample meeting.
+- Found during review, not changed: checklist items `state-goal` and `call-decision` still mention the "decision owner" (field removed in v1.5.0).
+- Not tested: PowerShell 7, the "..." menu and sidebar toggle by real clicks, the timer bar in the new style.
