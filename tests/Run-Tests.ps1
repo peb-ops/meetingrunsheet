@@ -126,6 +126,7 @@ try {
         fields  = @{ title = 'Crash triage'; type = 'triage'; date = '2026-09-20' }
         checks  = @{ 'before:needs-meeting' = $true }
         agenda  = @(@{ t = 'Decide ship / cut'; m = 15 })
+        attendees = @('QA lead')
         actions = @(
             @{ id = 'act1'; a = 'Fix save crash'; o = 'Ana'; d = $past; t = 'GAME-1'; done = $false },
             @{ id = 'act2'; a = 'Already done';  o = 'Bo';  d = $past; t = '';       done = $true },
@@ -145,6 +146,7 @@ try {
     Check 'GET one returns the saved meeting' ($r.Status -eq 200 -and $r.Json.fields.title -eq 'Crash triage' -and $r.Json.checks.'before:needs-meeting' -eq $true)
     # Windows PowerShell's JSON cmdlets can collapse one-item lists; the page needs a list back.
     Check 'one-row agenda is saved as a list' ($r.Body -match '"agenda":\s*\[' -and @($r.Json.agenda)[0].m -eq 15) ($r.Body -replace '\s+', ' ')
+    Check 'one-name attendees is saved as a list' ($r.Body -match '"attendees":\s*\[\s*"QA lead"') ($r.Body -replace '\s+', ' ')
 
     $r = Invoke-Api PUT "/api/meetings/$idA" (($r.Json | Select-Object fields, checks, actions | ConvertTo-Json -Depth 5) -replace 'Crash triage', 'Crash triage v2')
     Check 'PUT updates and keeps the id' ($r.Status -eq 200 -and $r.Json.id -eq $idA -and $r.Json.fields.title -eq 'Crash triage v2')
@@ -235,11 +237,12 @@ try {
         $count = { param($pattern) ([regex]::Matches($dom, $pattern)).Count }
         Check 'checklist renders 12 items'        ((& $count 'id="chk-') -eq 12) "(got $(& $count 'id="chk-'))"
         Check 'type dropdown has 8 types'         ((& $count '<option value=') -eq 8)
-        Check 'help tooltips are built (8)'       ((& $count 'class="label-row') -eq 8)
+        Check 'help tooltips are built (7)'       ((& $count 'class="label-row') -eq 7)
         Check 'sidebar lists saved meetings'      ($dom -match 'Crash triage v2')
         Check 'overdue badge shows in the list'   ($dom -match '1 overdue')
         Check 'timer bar is present and hidden'   ($dom -match 'id="timerBar"[^>]*hidden')
         Check 'agenda editor shows one empty row' ((& $count 'id="ag-t-') -eq 1)
+        Check 'attendee list shows one empty row' ((& $count 'id="att-') -eq 1)
         Check 'section nav lists 9 sections'     ((& $count 'class="jump-link') -eq 9) "(got $(& $count 'class="jump-link'))"
     }
 } finally {

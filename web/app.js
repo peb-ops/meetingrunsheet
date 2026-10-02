@@ -4,10 +4,11 @@
 */
 
 // Brief/record fields saved under meeting.fields. Each has an element with id "f-<name>" in index.html.
-// The agenda is separate: meeting.agenda is a list of rows (see "Agenda" below).
-const FIELDS = ["title", "type", "date", "length", "goal", "decider", "notetaker", "attendees", "decisions", "parking", "reflect"];
-// Fields copied into a follow-up meeting (the agenda is copied too).
-const FOLLOW_UP_FIELDS = ["title", "type", "length", "goal", "decider", "notetaker", "attendees"];
+// The agenda and attendees are separate lists: meeting.agenda and meeting.attendees (see below).
+// Old files may still have fields.decider (box removed in v1.5.0); it is kept but not shown.
+const FIELDS = ["title", "type", "date", "length", "goal", "notetaker", "decisions", "parking", "reflect"];
+// Fields copied into a follow-up meeting (the agenda and attendees are copied too).
+const FOLLOW_UP_FIELDS = ["title", "type", "length", "goal", "notetaker"];
 
 const $ = s => document.querySelector(s);
 const typeSel = $("#f-type");
@@ -24,7 +25,7 @@ const newActionId = () => Date.now().toString(36) + Math.random().toString(36).s
 const blankAction = () => ({ id: newActionId(), a: "", o: "", d: "", t: "", done: false });
 const blankAgendaRow = () => ({ t: "", m: null });
 const blank = () => ({ id: null, follows: null, fields: { type: "general", date: today() }, checks: {},
-                       agenda: [blankAgendaRow()], actions: [blankAction()] });
+                       agenda: [blankAgendaRow()], attendees: [""], actions: [blankAction()] });
 const typeName = key => (TYPES[key] || TYPES.general)[0];
 
 let state = blank();
@@ -174,6 +175,42 @@ function renderAgenda() {
 
     tbody.appendChild(tr);
   });
+}
+
+/* ---- Attendees: a list of names ---- */
+
+const attendeesToSave = () => (state.attendees || []).map(n => n.trim()).filter(Boolean);
+
+// Before v1.5.0 attendees were one text field ("Eng lead, QA lead, design").
+const attendeesFromText = text => String(text || "").split(/[,;\n]/).map(n => n.trim()).filter(Boolean);
+
+function renderAttendees() {
+  const tbody = $("#attendeeRows");
+  tbody.innerHTML = "";
+  state.attendees.forEach((name, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><input type="text" id="att-${i}" aria-label="Attendee ${i + 1}" placeholder="${i ? "Next person" : "e.g. QA lead"}"></td>
+      <td class="x"><button aria-label="Remove person">&times;</button></td>`;
+    const input = tr.querySelector("input");
+    input.value = name;
+    input.oninput = () => { state.attendees[i] = input.value; markDirty(); };
+    // Enter adds the next person, like the agenda.
+    input.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); addAttendee(i + 1); } };
+    tr.querySelector("td.x button").onclick = () => {
+      state.attendees.splice(i, 1);
+      if (!state.attendees.length) state.attendees.push("");
+      markDirty();
+      renderAttendees();
+    };
+    tbody.appendChild(tr);
+  });
+}
+
+function addAttendee(at) {
+  state.attendees.splice(at, 0, "");
+  markDirty();
+  renderAttendees();
+  $(`#att-${at}`).focus();
 }
 
 function agendaChanged() {
@@ -387,6 +424,7 @@ function renderAll() {
   if (!typeSel.value) typeSel.value = "general";
   showTip();
   showFollows();
+  renderAttendees();
   renderAgenda();
   showAgendaSum();
   renderPhases();
@@ -462,6 +500,10 @@ function fromSaved(m) {
     ? m.agenda.map(r => ({ t: String(r.t || ""), m: +r.m > 0 ? +r.m : null }))
     : agendaFromText(fields.agenda);   // before v1.3.0: free text in fields.agenda
   delete fields.agenda;
+  const attendees = Array.isArray(m.attendees)
+    ? m.attendees.map(n => String(n || ""))
+    : attendeesFromText(fields.attendees);   // before v1.5.0: free text in fields.attendees
+  delete fields.attendees;
   const actions = (m.actions && m.actions.length) ? m.actions : [blankAction()];
   actions.forEach(a => { if (!a.id) a.id = newActionId(); });   // before v1.2.0: no action ids
   return {
@@ -471,6 +513,7 @@ function fromSaved(m) {
     fields,
     checks: migrateChecks(m.checks),
     agenda: agenda.length ? agenda : [blankAgendaRow()],
+    attendees: attendees.length ? attendees : [""],
     actions,
   };
 }
@@ -493,6 +536,7 @@ async function save() {
     fields: state.fields,
     checks: state.checks,
     agenda: agendaToSave(),
+    attendees: attendeesToSave(),
     actions: state.actions.filter(a => a.a || a.o || a.d || a.t),   // drop empty rows
     follows: state.follows || undefined,
   };
@@ -525,7 +569,8 @@ function followUp() {
   FOLLOW_UP_FIELDS.forEach(k => { if (state.fields[k]) fields[k] = state.fields[k]; });
   const open = state.actions.filter(a => a.a && !a.done && !a.carried).map(a => Object.assign({}, a));
   const agenda = state.agenda.map(r => Object.assign({}, r));
-  state = { id: null, follows: state.id, fields, checks: {}, agenda, actions: open.length ? open : [blankAction()] };
+  const attendees = state.attendees.slice();
+  state = { id: null, follows: state.id, fields, checks: {}, agenda, attendees, actions: open.length ? open : [blankAction()] };
   renderAll();
   markDirty();
   toast(open.length ? `Carried over ${open.length} open action${open.length > 1 ? "s" : ""}` : "Brief copied to a new meeting");
@@ -561,8 +606,8 @@ function notes() {
   let o = `${f.title || "Meeting notes"}\n`;
   o += [f.date, typeName(f.type), f.length ? f.length + " min" : ""].filter(Boolean).join(" \u00b7 ") + "\n\n";
   if (f.goal) o += `Goal: ${f.goal}\n`;
-  if (f.decider) o += `Decision owner: ${f.decider}\n`;
-  if (f.attendees) o += `Attendees: ${f.attendees}\n`;
+  const people = attendeesToSave();
+  if (people.length) o += `Attendees: ${people.join(", ")}\n`;
 
   const decisions = lines(f.decisions);
   o += `\nDECISIONS\n${decisions.length ? bullets(decisions) : "- None recorded"}\n`;
@@ -709,6 +754,7 @@ $("#followBtn").onclick = () => guard(followUp);
 $("#deleteBtn").onclick = () => ask(`Delete "${state.fields.title || "Untitled meeting"}" permanently?`, "Delete", deleteMeeting);
 $("#addAction").onclick = addAction;
 $("#addAgenda").onclick = () => addAgendaRow(state.agenda.length);
+$("#addAttendee").onclick = () => addAttendee(state.attendees.length);
 $("#copyBtn").onclick = copyNotes;
 
 document.addEventListener("keydown", e => {

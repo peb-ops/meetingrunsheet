@@ -67,3 +67,11 @@
 - `tests/Run-Tests.ps1`: +2 checks (a one-row agenda is saved as a list, not collapsed by 5.1's JSON cmdlets; the agenda editor renders). 47/47 pass on 5.1.
 - A temporary browser harness passed 20/20 (legacy file and legacy draft convert to rows, Enter/move/remove, sum line, Next -> Wrap up -> reminder, over state, no-agenda bar, save/reopen/follow-up). Screenshots checked at 1280px and 500px. The harness wasn't kept.
 - Not tested: PowerShell 7, real mouse/touch.
+
+## 2026-10-02 (v1.5.0: attendee list, Decision owner removed)
+
+- `web/index.html`: removed the Decision owner box; the Note-taker tooltip no longer says "Ideally not you."; Attendees is now a row list (`#attendeeRows`) with an Add person button, reusing the agenda table styles.
+- `web/app.js`: `decider` and `attendees` dropped from `FIELDS`/`FOLLOW_UP_FIELDS`; new `renderAttendees()`/`addAttendee()` (Enter adds the next row, x removes one); saved as `attendees: [...]`; `fromSaved()` splits old `fields.attendees` text on `,` `;` and new lines; Follow-up copies the list; Copy notes prints "Attendees: a, b" and no longer prints Decision owner. Old `fields.decider` values stay in files, hidden.
+- `tests/Run-Tests.ps1`: +2 checks (a one-name attendees list stays a list on 5.1; the attendee editor renders); tooltip count 8 -> 7. 50/50 pass on 5.1.
+- `CLAUDE.md`: data format, page features, v1.5.0 history.
+- Not tested: PowerShell 7, clicking through the attendee editor in a real browser.
