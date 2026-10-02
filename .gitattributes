@@ -1,0 +1,5 @@
+# Line endings: LF everywhere, except batch files, which cmd.exe needs as CRLF.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.png binary
+*.ico binary
