@@ -39,7 +39,7 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
 - **Meeting timer:** counts down each agenda item, turns amber near the end and red when over,
   shows the time left in the browser tab, and keeps running if the page is reloaded.
 - **Record:** action items (owner, due date, ticket; missing owners/dates and overdue dates are
-  flagged), decisions, parking lot, and a short self-review.
+  flagged; the Owner box suggests the attendees), decisions, parking lot, and a short self-review.
 - **Facilitation checklist:** before, during and after the meeting.
 - **Library:** every saved meeting in a searchable sidebar, with open and overdue action counts.
 - **Open actions:** the Actions button lists every open action from every meeting, grouped by

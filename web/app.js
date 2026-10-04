@@ -229,18 +229,20 @@ const agendaEditor = rowEditor({
   },
 });
 
+const attendeesChanged = () => { markDirty(); fillOwnerList(); };
+
 // Attendees are plain strings, so edits write back by index.
 const attendeeEditor = rowEditor({
   tbody: $("#attendeeRows"),
   list: () => state.attendees,
   blank: () => "",
   removeLabel: "Remove person",
-  changed: markDirty,
+  changed: attendeesChanged,
   cells: (name, i) => `<td><input type="text" id="att-${i}" aria-label="Attendee ${i + 1}" placeholder="${i ? "Next person" : "e.g. QA lead"}"></td>`,
   bind: (tr, name, i) => {
     const input = tr.querySelector("input");
     input.value = name;
-    input.oninput = () => { state.attendees[i] = input.value; markDirty(); };
+    input.oninput = () => { state.attendees[i] = input.value; attendeesChanged(); };
     return [input];
   },
 });
@@ -356,6 +358,20 @@ function flagAction(tr, row) {
   if (isOverdue(row)) due.title = "Overdue";
 }
 
+// Names offered in each action's Owner box: the attendees, the note-taker and owners already used.
+// Any other name can still be typed.
+function fillOwnerList() {
+  const seen = new Set();
+  const names = [...attendeesToSave(), state.fields.notetaker, ...state.actions.map(a => a.o)]
+    .map(n => (n || "").trim())
+    .filter(n => n && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
+  $("#ownerList").replaceChildren(...names.map(n => {
+    const o = document.createElement("option");
+    o.value = n;
+    return o;
+  }));
+}
+
 function renderActions() {
   const tbody = $("#actionRows");
   tbody.innerHTML = "";
@@ -364,7 +380,7 @@ function renderActions() {
     tr.classList.toggle("done", !!row.done);
     tr.innerHTML = `<td class="c"><input type="checkbox" id="act-done-${i}" aria-label="Done"></td>
       <td><input type="text" id="act-a-${i}" aria-label="Action" placeholder="What gets done"></td>
-      <td><input type="text" id="act-o-${i}" aria-label="Owner" placeholder="Name"></td>
+      <td><input type="text" id="act-o-${i}" list="ownerList" aria-label="Owner" placeholder="Name"></td>
       <td><input type="date" id="act-d-${i}" aria-label="Due"></td>
       <td><input type="text" id="act-t-${i}" aria-label="Ticket" placeholder="PROJ-123"></td>
       <td class="x"><button aria-label="Remove action">&times;</button></td>`;
@@ -380,6 +396,8 @@ function renderActions() {
         markDirty();
       };
     });
+    // On leaving the box, not while typing, so the suggestions don't shift under the cursor.
+    tr.querySelector(`#act-o-${i}`).onchange = fillOwnerList;
 
     const doneBox = tr.querySelector(`#act-done-${i}`);
     doneBox.checked = !!row.done;
@@ -440,6 +458,7 @@ function renderAll() {
   showAgendaSum();
   renderPhases();
   renderActions();
+  fillOwnerList();
   setStatus();
   highlight();
   if (typeof resumeTimer === "function") resumeTimer(state.id);   // timer.js loads after this file
@@ -1063,6 +1082,7 @@ FIELDS.forEach(f => {
     markDirty();
     if (f === "type") showTip();
     if (f === "length") showAgendaSum();
+    if (f === "notetaker") fillOwnerList();
   });
 });
 

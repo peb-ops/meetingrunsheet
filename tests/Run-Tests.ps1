@@ -396,6 +396,7 @@ try {
         Check 'readiness badges show'             ($dom -match 'class="pill ready">Ready<' -and $dom -match 'class="pill prep">Needs goal, agenda, prep 1/2<')
         Check 'start time field is present'       ($dom -match 'id="f-time"')
         Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
+        Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and $dom -match 'id="act-o-0"[^>]*list="ownerList"')
         Check 'Actions button counts open actions' ($dom -match 'id="actionsCount"[^>]*>3<' -and $dom -match 'id="actionsView"[^>]*hidden')
 
         # The open actions view: /#actions opens it instead of the run sheet.
