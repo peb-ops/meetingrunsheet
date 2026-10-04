@@ -46,6 +46,8 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
 - **Open actions:** the Actions button lists every open action from every meeting, grouped by
   due date (overdue, next 7 days, later, no date). Filter by owner, tick actions off in place, or
   jump to the meeting they came from.
+- **Ticket links:** set your tracker's address once (Ticket links... in the ... menu) and ticket
+  keys such as `GAME-123` become links. The address is kept in the browser, not in meeting files.
 - **Follow-up meeting:** copies the brief and carries open actions into a new meeting, linked back
   to the original.
 - **Copy notes:** a plain-text summary ready to paste into chat or email.

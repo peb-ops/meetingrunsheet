@@ -201,6 +201,14 @@ td input.overdue{color:var(--danger);font-weight:600}
 tr.carried input[type=text],tr.carried input[type=date]{color:var(--faint);font-style:italic}
 td.c .carried-link{padding:2px 7px;font-size:15px;line-height:1;color:var(--accent)}
 td.x{width:40px}
+/* Ticket box with its link arrow (linkTicket in app.js), and the tracker address box */
+.tk{display:flex;align-items:center;gap:2px}
+.tk input{min-width:0}
+.ticket-go{flex:none;padding:2px 6px;border-radius:6px;font-size:15px;line-height:1.2;text-decoration:none}
+.ticket-go:hover{background:var(--accent-soft)}
+a{color:var(--accent);text-underline-offset:2px}
+a:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring);border-radius:4px}
+.ticket-box{display:flex;flex-direction:column;gap:8px}
 /* Agenda and attendee rows keep a visible box, unlike the action table */
 table.row-table td input[type=text]{background:var(--field);border-color:var(--line)}
 table.row-table td input[type=text]:focus{background:var(--surface);border-color:var(--accent)}

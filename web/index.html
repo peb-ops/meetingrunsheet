@@ -61,6 +61,8 @@
             <button role="menuitem" id="restoreBtn" title="Adds meetings from a backup zip; never overwrites one you have">Restore from backup...</button>
             <button role="menuitem" id="csvBtn" title="Every action from every meeting, for Excel or a tracker import">Export actions (CSV)</button>
             <hr>
+            <button role="menuitem" id="ticketBtn" title="Turn ticket keys into links to your tracker">Ticket links...</button>
+            <hr>
             <button role="menuitem" class="danger" id="deleteBtn" hidden>Delete meeting</button>
           </div>
         </div>
@@ -71,6 +73,13 @@
     <div class="card confirm" id="confirmBox" hidden>
       <span id="confirmMsg"></span>
       <div class="toolbar"><button class="primary" id="confirmYes">Yes</button><button id="confirmNo">Cancel</button></div>
+    </div>
+    <!-- Tracker address for ticket links (setupTicketLinks in app.js); kept in the browser, not in meeting files -->
+    <div class="card ticket-box" id="ticketBox" hidden>
+      <label class="label" for="ticketUrl">Ticket links: your tracker's address. The ticket key is added at the end.</label>
+      <input id="ticketUrl" type="url" placeholder="https://yourstudio.atlassian.net/browse/">
+      <p class="hint">Write {key} where the key goes if that isn't the end. Kept in this browser only. Leave it empty for no links.</p>
+      <div class="toolbar"><button class="primary" id="ticketSave">Save</button><button id="ticketCancel">Cancel</button></div>
     </div>
     <div class="card" id="fallbackBox" hidden>
       <div class="label label-above">Copy didn't go through. Select this text and copy it.</div>

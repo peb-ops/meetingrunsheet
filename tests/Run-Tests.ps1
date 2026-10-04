@@ -344,7 +344,7 @@ try {
         fields  = @{ title = 'Prepared review'; type = 'design'; date = $next; time = '14:00'; goal = 'approve or rework' }
         checks  = @{ 'before:send-agenda' = $true; 'before:prep-room' = $true; 'during:start-on-time' = $true }
         agenda  = @(@{ t = 'Risks'; m = 20 })
-        actions = @()
+        actions = @(@{ id = 'tk1'; a = 'Write up risks'; o = 'Dee'; d = $next; t = 'https://tracker.example/GAME-9'; done = $false })
     } | ConvertTo-Json -Depth 5)).Json.id
     $u2 = (Invoke-Api POST '/api/meetings' (@{
         fields  = @{ title = 'Unprepared sync'; type = 'general'; date = $next; time = '09:00' }
@@ -405,13 +405,15 @@ try {
         Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
         Check 'empty agenda offers the type template' ($dom -match 'id="useTemplate"[^>]*>Use template: General / decision<' -and $dom -notmatch 'id="useTemplate"[^>]*hidden')
         Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and $dom -match 'id="act-o-0"[^>]*list="ownerList"')
-        Check 'Actions button counts open actions' ($dom -match 'id="actionsCount"[^>]*>3<' -and $dom -match 'id="actionsView"[^>]*hidden')
+        Check 'ticket link setup is in the menu'   ($dom -match 'id="ticketBtn"' -and $dom -match 'id="ticketBox"[^>]*hidden' -and $dom -match 'class="ticket-go"[^>]*hidden')
+        Check 'Actions button counts open actions' ($dom -match 'id="actionsCount"[^>]*>4<' -and $dom -match 'id="actionsView"[^>]*hidden')
 
         # The open actions view: /#actions opens it instead of the run sheet.
         $dom = Get-Dom "$base/#actions" 'actions'
         Check 'actions view replaces the run sheet' ($dom -match 'id="sheet"[^>]*hidden' -and $dom -notmatch 'id="actionsView"[^>]*hidden')
-        Check 'actions view groups by due date'     ((& $count 'class="grp"') -eq 2 -and $dom -match '>Overdue <' -and $dom -match '>No due date <') "(got $(& $count 'class="grp"') groups)"
-        Check 'actions view lists actions with a tick box' ($dom -match '<td class="a">Fix save crash</td>' -and (& $count 'aria-label="Done: ') -eq 2) "(got $(& $count 'aria-label="Done: ') boxes)"
+        Check 'actions view groups by due date'     ((& $count 'class="grp"') -eq 3 -and $dom -match '>Overdue <' -and $dom -match '>Next 7 days <' -and $dom -match '>No due date <') "(got $(& $count 'class="grp"') groups)"
+        Check 'actions view lists actions with a tick box' ($dom -match '<td class="a">Fix save crash</td>' -and (& $count 'aria-label="Done: ') -eq 3) "(got $(& $count 'aria-label="Done: ') boxes)"
+        Check 'a ticket that is a web address is a link' ($dom -match '<a target="_blank" rel="noopener noreferrer" href="https://tracker\.example/GAME-9">https://tracker\.example/GAME-9</a>')
     }
 } finally {
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }

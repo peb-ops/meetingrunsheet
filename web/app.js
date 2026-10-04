@@ -359,6 +359,70 @@ function updateCounts() {
   });
 }
 
+/* ---- Ticket links ---- */
+
+// The tracker address that ticket keys are added to, e.g. "https://studio.atlassian.net/browse/".
+// Set from the "..." menu and kept in this browser only (localStorage), never in meeting files.
+const TICKET_KEY = "runsheet-ticket-url";
+const isWebAddress = text => /^https?:\/\/\S+$/i.test(text);
+let ticketBase = "";
+try { ticketBase = localStorage.getItem(TICKET_KEY) || ""; } catch (e) {}
+if (!isWebAddress(ticketBase)) ticketBase = "";
+
+// Where a ticket links to, or "" for no link. A ticket that is already a full address links to
+// itself. "{key}" in the tracker address marks where the key goes; without it, the key goes at the end.
+function ticketHref(ticket) {
+  const key = (ticket || "").trim();
+  if (isWebAddress(key)) return key;
+  if (!key || !ticketBase) return "";
+  const part = encodeURIComponent(key);
+  return ticketBase.includes("{key}") ? ticketBase.replace("{key}", part) : ticketBase + part;
+}
+
+// Opens in a new tab, so the run sheet stays where it is.
+function ticketLink(text) {
+  const a = document.createElement("a");
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.textContent = text;
+  return a;
+}
+
+// The arrow next to an action's Ticket box: shown when there is something to link to.
+function linkTicket(tr, row) {
+  const go = tr.querySelector(".ticket-go");
+  const href = ticketHref(row.t);
+  go.hidden = !href;
+  if (href) go.href = href;
+}
+
+// "Ticket links..." in the menu opens a box for the tracker address.
+function setupTicketLinks() {
+  const box = $("#ticketBox");
+  const input = $("#ticketUrl");
+  const store = () => {
+    const url = input.value.trim();
+    if (url && !isWebAddress(url)) { toast("The address must start with http:// or https://"); return; }
+    ticketBase = url;
+    try { if (url) localStorage.setItem(TICKET_KEY, url); else localStorage.removeItem(TICKET_KEY); } catch (e) {}
+    box.hidden = true;
+    renderActions();
+    if (actionsOn) renderOpenActions();
+    toast(url ? "Ticket links are on" : "Ticket links are off");
+  };
+  $("#ticketBtn").onclick = () => {
+    input.value = ticketBase;
+    box.hidden = false;
+    input.focus();
+  };
+  $("#ticketSave").onclick = store;
+  $("#ticketCancel").onclick = () => { box.hidden = true; };
+  input.onkeydown = e => {
+    if (e.key === "Enter") store();
+    if (e.key === "Escape") box.hidden = true;
+  };
+}
+
 /* ---- Render: action items ---- */
 
 // Every open action needs one owner and a due date; past-due open actions are overdue.
@@ -402,7 +466,7 @@ function renderActions() {
       <td><input type="text" id="act-a-${i}" aria-label="Action" placeholder="What gets done"></td>
       <td><input type="text" id="act-o-${i}" list="ownerList" aria-label="Owner" placeholder="Name"></td>
       <td><input type="date" id="act-d-${i}" aria-label="Due"></td>
-      <td><input type="text" id="act-t-${i}" aria-label="Ticket" placeholder="PROJ-123"></td>
+      <td><div class="tk"><input type="text" id="act-t-${i}" aria-label="Ticket" placeholder="PROJ-123"></div></td>
       <td class="x"><button aria-label="Remove action">&times;</button></td>`;
 
     // a = action, o = owner, d = due date, t = ticket
@@ -413,9 +477,16 @@ function renderActions() {
       input.oninput = () => {
         row[k] = input.value;
         flagAction(tr, row);
+        if (k === "t") linkTicket(tr, row);
         markDirty();
       };
     });
+    const go = ticketLink("↗");
+    go.className = "ticket-go";
+    go.title = "Open the ticket";
+    go.setAttribute("aria-label", go.title);
+    tr.querySelector(".tk").appendChild(go);
+    linkTicket(tr, row);
     // On leaving the box, not while typing, so the suggestions don't shift under the cursor.
     tr.querySelector(`#act-o-${i}`).onchange = fillOwnerList;
 
@@ -758,7 +829,13 @@ function openActionRow(r, now) {
   cell("a", r.a);
   cell(r.o ? "" : "warn", r.o || "No owner");
   cell("due " + (!r.d ? "warn" : r.d < now ? "overdue" : ""), r.d || "No date");
-  cell("", r.t);
+  const ticket = cell("", r.t);
+  const href = ticketHref(r.t);
+  if (href) {
+    const a = ticketLink(r.t);
+    a.href = href;
+    ticket.replaceChildren(a);
+  }
 
   const from = cell("", "");
   const link = document.createElement("button");
@@ -1163,6 +1240,7 @@ setupHelp();
 setupMenu();
 setupSidebar();
 setupCalendar();
+setupTicketLinks();
 fillTypeOptions();
 renderAll();
 loadList();
