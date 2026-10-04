@@ -8,7 +8,7 @@ No installs, no admin rights, no internet connection, no external services.
 
 ## Requirements
 
-- Windows with Windows PowerShell 5.1 (built in) or PowerShell 7
+- Windows with Windows PowerShell 5.1 (built in)
 - Any modern browser (Edge, Chrome, Firefox)
 
 ## Run it

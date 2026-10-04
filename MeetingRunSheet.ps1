@@ -6,7 +6,7 @@
     Starts a small web server on your own machine (localhost only) and opens the run sheet
     in your browser. Each meeting is saved as a JSON file in the data folder, so you can
     search, reopen, and follow up on past meetings. No installs or admin rights needed.
-    Works in Windows PowerShell 5.1 and PowerShell 7+.
+    Works in Windows PowerShell 5.1.
 
     Stop the server with Ctrl+C in the PowerShell window.
 

@@ -6,8 +6,7 @@
     Starts the app on a spare port with a throwaway data folder (your real meetings are
     never touched), runs HTTP checks against the API and page files, then stops it.
     If Microsoft Edge is installed, also loads the page headless and checks it renders.
-    Runs the server with the same PowerShell you run this script with, so run it once
-    with powershell.exe (5.1) and once with pwsh (7) to cover both.
+    Runs the server with the same PowerShell you run this script with (Windows PowerShell 5.1).
 
     Exit code: 0 if everything passed, 1 otherwise.
 
@@ -15,7 +14,7 @@
     powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
 
 .EXAMPLE
-    pwsh -NoProfile -File .\tests\Run-Tests.ps1 -Port 8299 -SkipBrowser
+    powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 -Port 8299 -SkipBrowser
 #>
 [CmdletBinding()]
 param(
