@@ -206,7 +206,7 @@ function rowEditor({ tbody, list, blank, cells, bind, changed, movable = false, 
   return ed;
 }
 
-const agendaChanged = () => { markDirty(); showAgendaSum(); };
+const agendaChanged = () => { markDirty(); showAgendaSum(); showTemplateOffer(); };
 
 const agendaEditor = rowEditor({
   tbody: $("#agendaRows"),
@@ -268,6 +268,26 @@ function showAgendaSum() {
   }
   box.textContent = msg;
   box.classList.toggle("warn", warn);
+}
+
+// The "Use template" button: shown only while the agenda is empty, for the chosen meeting type
+// (AGENDAS in content.js).
+function showTemplateOffer() {
+  const btn = $("#useTemplate");
+  btn.hidden = !AGENDAS[typeSel.value] || agendaItems().length > 0;
+  btn.textContent = "Use template: " + typeName(typeSel.value);
+}
+
+// Copies the type's starter agenda in, and sets the timebox to its total if there isn't one yet.
+function useTemplate() {
+  const rows = AGENDAS[typeSel.value];
+  state.agenda = rows.map(([t, m]) => ({ t, m }));
+  if (!+state.fields.length) {
+    state.fields.length = String(rows.reduce((sum, [, m]) => sum + m, 0));
+    $("#f-length").value = state.fields.length;
+  }
+  agendaEditor.render();
+  agendaChanged();
 }
 
 /* ---- Render: checklist ---- */
@@ -456,6 +476,7 @@ function renderAll() {
   attendeeEditor.render();
   agendaEditor.render();
   showAgendaSum();
+  showTemplateOffer();
   renderPhases();
   renderActions();
   fillOwnerList();
@@ -1080,7 +1101,7 @@ FIELDS.forEach(f => {
   el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
     state.fields[f] = el.value;
     markDirty();
-    if (f === "type") showTip();
+    if (f === "type") { showTip(); showTemplateOffer(); }
     if (f === "length") showAgendaSum();
     if (f === "notetaker") fillOwnerList();
   });
@@ -1110,6 +1131,7 @@ $("#followBtn").onclick = () => guard(followUp);
 $("#deleteBtn").onclick = () => ask(`Delete "${state.fields.title || "Untitled meeting"}" permanently?`, "Delete", deleteMeeting);
 $("#addAction").onclick = addAction;
 $("#addAgenda").onclick = () => agendaEditor.add(state.agenda.length);
+$("#useTemplate").onclick = useTemplate;
 $("#addAttendee").onclick = () => attendeeEditor.add(state.attendees.length);
 $("#actionsBtn").onclick = () => showActions(!actionsOn);
 $("#actionsBack").onclick = () => showActions(false);

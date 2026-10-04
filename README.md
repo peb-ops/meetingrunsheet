@@ -35,7 +35,8 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
 
 - **Brief:** title, goal ("we leave this meeting with..."), meeting type with tips, date, timebox,
   note-taker and attendees.
-- **Agenda:** items with minutes, checked against the timebox. Press Enter to add the next item.
+- **Agenda:** items with minutes, checked against the timebox. Press Enter to add the next item,
+  or start an empty agenda from the template for the meeting type.
 - **Meeting timer:** counts down each agenda item, turns amber near the end and red when over,
   shows the time left in the browser tab, and keeps running if the page is reloaded.
 - **Record:** action items (owner, due date, ticket; missing owners/dates and overdue dates are
@@ -65,7 +66,7 @@ your machine. Use **Download backup** from the ... menu to make a copy.
 The page files are in `web\` and are read from disk on every request, so edits only need a
 browser refresh:
 
-- `web\content.js` - checklist items and meeting-type tips
+- `web\content.js` - checklist items, meeting-type tips and agenda templates
 - `web\styles.css` - colours and layout (theme colours are at the top)
 
 ## Project layout

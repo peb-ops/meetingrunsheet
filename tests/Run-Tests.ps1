@@ -162,6 +162,13 @@ try {
         $r = Invoke-Api GET "/$f"
         Check "GET /$f" ($r.Status -eq 200 -and $r.Body.Length -gt 0)
     }
+    # content.js: every meeting type (a "  key: [" line under TYPES) has a starter agenda under AGENDAS.
+    $parts = (Invoke-Api GET '/content.js').Body -split 'const AGENDAS', 2
+    $keys = { param($text) @([regex]::Matches($text, '(?m)^  (\w+):\s*\[') | ForEach-Object { $_.Groups[1].Value } | Sort-Object) }
+    $typesText = ($parts[0] -split 'const TYPES', 2)[1]
+    $typeKeys = & $keys $typesText
+    $agendaKeys = & $keys $parts[1]
+    Check 'every meeting type has an agenda template' ($typeKeys.Count -eq 8 -and ($typeKeys -join ',') -eq ($agendaKeys -join ',')) "(types: $($typeKeys -join ','); agendas: $($agendaKeys -join ','))"
     Check 'missing file -> 404'          ((Invoke-Api GET '/nope.js').Status -eq 404)
     Check 'unknown file type -> 404'     ((Invoke-Api GET '/index.ps1').Status -eq 404)
     Check 'path traversal is refused'    ((Invoke-Api GET '/%2e%2e/MeetingRunSheet.ps1').Status -ne 200)
@@ -396,6 +403,7 @@ try {
         Check 'readiness badges show'             ($dom -match 'class="pill ready">Ready<' -and $dom -match 'class="pill prep">Needs goal, agenda, prep 1/2<')
         Check 'start time field is present'       ($dom -match 'id="f-time"')
         Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
+        Check 'empty agenda offers the type template' ($dom -match 'id="useTemplate"[^>]*>Use template: General / decision<' -and $dom -notmatch 'id="useTemplate"[^>]*hidden')
         Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and $dom -match 'id="act-o-0"[^>]*list="ownerList"')
         Check 'Actions button counts open actions' ($dom -match 'id="actionsCount"[^>]*>3<' -and $dom -match 'id="actionsView"[^>]*hidden')
 
