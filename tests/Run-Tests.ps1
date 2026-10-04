@@ -405,7 +405,8 @@ try {
         Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
         Check 'empty agenda offers the type template' ($dom -match 'id="useTemplate"[^>]*>Use template: General / decision<' -and $dom -notmatch 'id="useTemplate"[^>]*hidden')
         Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and $dom -match 'id="act-o-0"[^>]*list="ownerList"')
-        Check 'ticket link setup is in the menu'   ($dom -match 'id="ticketBtn"' -and $dom -match 'id="ticketBox"[^>]*hidden' -and $dom -match 'class="ticket-go"[^>]*hidden')
+        Check 'menu has both Copy notes entries'   ($dom -match 'id="copyBtn"' -and $dom -match 'id="copyMdBtn"')
+        Check 'ticket link setup is in the menu'  ($dom -match 'id="ticketBtn"' -and $dom -match 'id="ticketBox"[^>]*hidden' -and $dom -match 'class="ticket-go"[^>]*hidden')
         Check 'Actions button counts open actions' ($dom -match 'id="actionsCount"[^>]*>4<' -and $dom -match 'id="actionsView"[^>]*hidden')
 
         # The open actions view: /#actions opens it instead of the run sheet.

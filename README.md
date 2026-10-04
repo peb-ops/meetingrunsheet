@@ -50,7 +50,8 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
   keys such as `GAME-123` become links. The address is kept in the browser, not in meeting files.
 - **Follow-up meeting:** copies the brief and carries open actions into a new meeting, linked back
   to the original.
-- **Copy notes:** a plain-text summary ready to paste into chat or email.
+- **Copy notes:** a plain-text summary ready to paste into chat or email, or the same notes as
+  Markdown for a wiki, Confluence or GitHub.
 - **Backup and export** (the ... menu): download every meeting as a zip, restore from a backup
   zip (adds missing meetings, never overwrites one you have), and export all actions as CSV for
   Excel or a tracker import.

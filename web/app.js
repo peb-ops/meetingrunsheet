@@ -984,33 +984,46 @@ function addAction() {
   $(`#act-a-${state.actions.length - 1}`).focus();
 }
 
-/* ---- Copy notes (plain-text summary for Slack or email) ---- */
+/* ---- Copy notes (summary for Slack or email; as Markdown for a wiki, Confluence or GitHub) ---- */
 
-function notes() {
+// Plain text by default. With md, the same notes as Markdown: headings, bold labels, and tickets
+// as links where there is something to link to (see ticketHref).
+function notes(md) {
   const f = state.fields;
   const lines = s => (s || "").split("\n").map(x => x.trim()).filter(Boolean);
   const bullets = arr => arr.map(x => "- " + x).join("\n");
+  const gap = md ? "\n" : "";   // Markdown needs an empty line between paragraphs
+  const label = text => md ? `**${text}:**` : `${text}:`;
+  const section = (name, body) => `${md ? "## " + name : "\n" + name.toUpperCase()}\n${gap}${body}\n${gap}`;
 
-  let o = `${f.title || "Meeting notes"}\n`;
+  let o = `${md ? "# " : ""}${f.title || "Meeting notes"}\n${gap}`;
   o += [f.date, f.time, typeName(f.type), f.length ? f.length + " min" : ""].filter(Boolean).join(" \u00b7 ") + "\n\n";
-  if (f.goal) o += `Goal: ${f.goal}\n`;
+  if (f.goal) o += `${label("Goal")} ${f.goal}\n${gap}`;
   const people = attendeesToSave();
-  if (people.length) o += `Attendees: ${people.join(", ")}\n`;
+  if (people.length) o += `${label("Attendees")} ${people.join(", ")}\n${gap}`;
 
   const decisions = lines(f.decisions);
-  o += `\nDECISIONS\n${decisions.length ? bullets(decisions) : "- None recorded"}\n`;
+  o += section("Decisions", decisions.length ? bullets(decisions) : "- None recorded");
 
   const acts = state.actions.filter(a => a.a && a.a.trim());
-  const actText = a => `${a.done ? "[done] " : a.carried ? "[carried to follow-up] " : ""}${a.a} (Owner: ${a.o || "UNASSIGNED"}, Due: ${a.d || "TBD"}${a.t ? ", " + a.t : ""})`;
-  o += `\nACTIONS\n${acts.length ? bullets(acts.map(actText)) : "- None"}\n`;
+  const status = a => {
+    const text = a.done ? "done" : a.carried ? "carried to follow-up" : "";
+    return !text ? "" : md ? `**${text[0].toUpperCase()}${text.slice(1)}:** ` : `[${text}] `;
+  };
+  const ticket = a => {
+    const href = md ? ticketHref(a.t) : "";
+    return !a.t ? "" : ", " + (href && href !== a.t.trim() ? `[${a.t.trim()}](${href})` : a.t);
+  };
+  const actText = a => `${status(a)}${a.a} (Owner: ${a.o || "UNASSIGNED"}, Due: ${a.d || "TBD"}${ticket(a)})`;
+  o += section("Actions", acts.length ? bullets(acts.map(actText)) : "- None");
 
   const parking = lines(f.parking);
-  if (parking.length) o += `\nPARKING LOT\n${bullets(parking)}\n`;
-  return o;
+  if (parking.length) o += section("Parking lot", bullets(parking));
+  return o.trimEnd() + "\n";
 }
 
-function copyNotes() {
-  const txt = notes();
+function copyNotes(md) {
+  const txt = notes(md);
   const box = $("#fallbackBox");
   const area = $("#copyFallback");
   const fallback = () => {
@@ -1020,7 +1033,7 @@ function copyNotes() {
   };
   box.hidden = true;
   try {
-    navigator.clipboard.writeText(txt).then(() => toast("Notes copied. Paste them into Slack or email."), fallback);
+    navigator.clipboard.writeText(txt).then(() => toast(md ? "Notes copied as Markdown." : "Notes copied. Paste them into Slack or email."), fallback);
   } catch (e) {
     fallback();
   }
@@ -1213,7 +1226,8 @@ $("#addAttendee").onclick = () => attendeeEditor.add(state.attendees.length);
 $("#actionsBtn").onclick = () => showActions(!actionsOn);
 $("#actionsBack").onclick = () => showActions(false);
 $("#actFilter").addEventListener("input", renderOpenActions);
-$("#copyBtn").onclick = copyNotes;
+$("#copyBtn").onclick = () => copyNotes(false);
+$("#copyMdBtn").onclick = () => copyNotes(true);
 $("#backupBtn").onclick = () => download("/api/backup");
 $("#csvBtn").onclick = () => download("/api/actions.csv");
 $("#restoreBtn").onclick = () => $("#restoreFile").click();
