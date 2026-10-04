@@ -481,7 +481,7 @@ function renderActions() {
         markDirty();
       };
     });
-    const go = ticketLink("↗");
+    const go = ticketLink("\u2197");
     go.className = "ticket-go";
     go.title = "Open the ticket";
     go.setAttribute("aria-label", go.title);
@@ -822,7 +822,7 @@ function openActionRow(r, now) {
     tick.appendChild(box);
   } else {
     // Saved before actions had ids (v1.2.0): opening and saving the meeting gives it one.
-    tick.textContent = "–";
+    tick.textContent = "\u2013";
     tick.title = "Open the meeting to tick this one off";
   }
 
