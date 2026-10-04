@@ -17,6 +17,8 @@ using module .\WebRoot.psm1
 #   GET    /api/backup         zip of every meeting file (download)
 #   POST   /api/backup         restore: body is a backup zip; adds missing meetings, never overwrites
 #   GET    /api/actions.csv    every action in every meeting (download)
+#   GET    /api/actions        every open action in every meeting, soonest due first
+#   PUT    /api/meetings/{id}/actions/{actionId}   body {"done": true|false}: tick one action
 # Saving or deleting a follow-up also updates "carried" on its original meeting (see MeetingStore).
 
 class RunSheetServer {
@@ -123,6 +125,21 @@ class RunSheetServer {
             $bytes = [byte[]](@(0xEF, 0xBB, 0xBF) + $this.Utf8.GetBytes($this.Store.ActionsCsv()))
             $name = 'meeting-actions-' + (Get-Date -Format 'yyyyMMdd') + '.csv'
             $this.SendDownload($ctx, $bytes, 'text/csv; charset=utf-8', $name); return
+        }
+
+        if ($path -eq '/api/actions' -and $method -eq 'GET') {
+            $this.SendJson($ctx, @($this.Store.OpenActions()), 200); return
+        }
+
+        $m = [regex]::Match($path, '^/api/meetings/([^/]+)/actions/([^/]+)$')
+        if ($m.Success -and $method -eq 'PUT' -and [MeetingStore]::IsValidId($m.Groups[1].Value) -and [MeetingStore]::IsValidId($m.Groups[2].Value)) {
+            $id = $m.Groups[1].Value
+            $actionId = $m.Groups[2].Value
+            $done = [bool]($this.ReadBody($req) | ConvertFrom-Json).done
+            if (-not $this.Store.Exists($id) -or -not $this.Store.SetActionDone($id, $actionId, $done)) {
+                $this.SendJson($ctx, @{ error = 'Action not found' }, 404); return
+            }
+            $this.SendJson($ctx, @{ id = $actionId; done = $done }, 200); return
         }
 
         $m = [regex]::Match($path, '^/api/meetings/([^/]+)$')

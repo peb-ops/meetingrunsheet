@@ -42,6 +42,9 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
   flagged), decisions, parking lot, and a short self-review.
 - **Facilitation checklist:** before, during and after the meeting.
 - **Library:** every saved meeting in a searchable sidebar, with open and overdue action counts.
+- **Open actions:** the Actions button lists every open action from every meeting, grouped by
+  due date (overdue, next 7 days, later, no date). Filter by owner, tick actions off in place, or
+  jump to the meeting they came from.
 - **Follow-up meeting:** copies the brief and carries open actions into a new meeting, linked back
   to the original.
 - **Copy notes:** a plain-text summary ready to paste into chat or email.

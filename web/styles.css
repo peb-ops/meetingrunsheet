@@ -207,6 +207,22 @@ table.row-table td input[type=text]:focus{background:var(--surface);border-color
 td.x button{padding:3px 9px;border-color:transparent;background:transparent;color:var(--faint)}
 td.x button:hover{background:var(--field);color:var(--ink)}
 
+/* ---- Open actions view (showActions in app.js) ---- */
+.sheet{display:flex;flex-direction:column;gap:20px;min-width:0}
+#actionsBtn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+#actionsBtn .pill{margin-left:6px}
+.open-actions{display:flex;flex-direction:column;gap:12px}
+.open-actions .card-head{margin-bottom:0;align-items:center}
+.open-actions td{padding:9px 8px;overflow-wrap:anywhere}
+.open-actions tr.grp th{padding-top:16px;font-size:12px;font-weight:600;color:var(--faint)}
+.open-actions tr.grp:first-child th{padding-top:4px}
+.open-actions tr.grp + tr td{border-top:0}
+.open-actions tr.done td.a{text-decoration:line-through;color:var(--faint)}
+.open-actions td.due{white-space:nowrap;font-variant-numeric:tabular-nums}
+.open-actions td.warn{color:var(--warn)}
+.open-actions td.overdue{color:var(--danger);font-weight:600}
+.open-actions .when{margin-left:6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+
 /* ---- Checklist phases ---- */
 .phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px 24px;align-items:start}
 .phase{display:flex;flex-direction:column;gap:8px;min-width:0}

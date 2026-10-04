@@ -170,6 +170,7 @@ try {
     Write-Host 'API basics'
     $r = Invoke-Api GET '/api/meetings'
     Check 'empty list is []' ($r.Status -eq 200 -and $r.Body -eq '[]')
+    Check 'no open actions is []' ((Invoke-Api GET '/api/actions').Body -eq '[]')
 
     $today = (Get-Date).ToString('yyyy-MM-dd')
     $past  = (Get-Date).AddDays(-3).ToString('yyyy-MM-dd')
@@ -263,6 +264,28 @@ try {
     $bytes = [System.IO.File]::ReadAllBytes((Join-Path $data "$idA.json"))
     Check 'saved files have no BOM' (-not ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF))
 
+    Write-Host 'Open actions across meetings'
+    $r = Invoke-Api GET '/api/actions'
+    $acts = @($r.Json)
+    $fix = $acts | Where-Object { $_.id -eq 'act1' }
+    Check 'GET /api/actions lists open actions only' ($r.Status -eq 200 -and $acts.Count -eq 3 -and -not ($acts | Where-Object { $_.a -eq 'Already done' })) "(got $($acts.Count))"
+    Check 'each action names its meeting' ($fix.meetingId -eq $idA -and $fix.meeting -eq 'Crash triage v2' -and $fix.meetingDate -eq '2026-09-20' -and $fix.o -eq 'Ana' -and $fix.d -eq $past -and $fix.t -eq 'GAME-1')
+    Check 'soonest due first, no due date last' ($acts[0].id -eq 'act1' -and -not $acts[1].d -and -not $acts[2].d)
+    Check 'an action from before ids has an empty id' (($acts | Where-Object { $_.a -eq 'old' }).id -eq '')
+
+    $savedAtA = (Invoke-Api GET "/api/meetings/$idA").Json.savedAt
+    $r = Invoke-Api PUT "/api/meetings/$idA/actions/act3" '{"done":true}'
+    $after = (Invoke-Api GET "/api/meetings/$idA").Json
+    $byId = @{}; foreach ($x in $after.actions) { $byId[$x.id] = $x }
+    Check 'PUT action done ticks just that action' ($r.Status -eq 200 -and $r.Json.done -eq $true -and $byId['act3'].done -eq $true -and $byId['act1'].done -eq $false -and @($after.actions).Count -eq 3 -and $after.fields.title -eq 'Crash triage v2')
+    Check 'ticking an action keeps savedAt' ($after.savedAt -eq $savedAtA)
+    Check 'a ticked action leaves the open list' (@((Invoke-Api GET '/api/actions').Json).Count -eq 2 -and (Get-Summary $idA).openActions -eq 1)
+    $r = Invoke-Api PUT "/api/meetings/$idA/actions/act3" '{"done":false}'
+    Check 'unticking puts it back' ($r.Json.done -eq $false -and (Get-Summary $idA).openActions -eq 2)
+    Check 'unknown action -> 404'  ((Invoke-Api PUT "/api/meetings/$idA/actions/nope" '{"done":true}').Status -eq 404)
+    Check 'action in an unknown meeting -> 404' ((Invoke-Api PUT '/api/meetings/does-not-exist/actions/act1' '{"done":true}').Status -eq 404)
+    Check 'tick without X-Run-Sheet -> 403' ((Invoke-Api PUT "/api/meetings/$idA/actions/act1" '{"done":true}' @{ 'X-Run-Sheet' = '0' }).Status -eq 403)
+
     Write-Host 'Backup, restore and CSV'
     $r = Invoke-Raw GET '/api/backup'
     $names = @(); try { $names = Get-ZipNames $r.Bytes } catch { }
@@ -340,19 +363,24 @@ try {
         Write-Host 'Page render: skipped (no Edge, or -SkipBrowser)' -ForegroundColor Yellow
     } else {
         Write-Host 'Page render (headless Edge)'
-        $domFile = Join-Path $work 'dom.html'
-        $edgeArgs = "--headless --disable-gpu --no-first-run --user-data-dir=`"$work\edge`" --virtual-time-budget=4000 --dump-dom $base/"
-        $p = Start-Process -FilePath $edge -ArgumentList $edgeArgs -RedirectStandardOutput $domFile -PassThru -WindowStyle Hidden
-        if (-not $p.WaitForExit(45000)) { try { $p.Kill() } catch { } }
-        # Edge's helper processes can keep the output file open, so read it shared, then stop them.
-        $dom = ''
-        if (Test-Path $domFile) {
-            $fs = [System.IO.File]::Open($domFile, 'Open', 'Read', 'ReadWrite')
-            try { $dom = (New-Object System.IO.StreamReader($fs)).ReadToEnd() } finally { $fs.Dispose() }
+        # The page's HTML after its scripts have run.
+        function Get-Dom([string]$Url, [string]$Name) {
+            $domFile = Join-Path $work "$Name.html"
+            $edgeArgs = "--headless --disable-gpu --no-first-run --user-data-dir=`"$work\edge-$Name`" --virtual-time-budget=4000 --dump-dom $Url"
+            $p = Start-Process -FilePath $edge -ArgumentList $edgeArgs -RedirectStandardOutput $domFile -PassThru -WindowStyle Hidden
+            if (-not $p.WaitForExit(45000)) { try { $p.Kill() } catch { } }
+            # Edge's helper processes can keep the output file open, so read it shared, then stop them.
+            $text = ''
+            if (Test-Path $domFile) {
+                $fs = [System.IO.File]::Open($domFile, 'Open', 'Read', 'ReadWrite')
+                try { $text = (New-Object System.IO.StreamReader($fs)).ReadToEnd() } finally { $fs.Dispose() }
+            }
+            Get-CimInstance Win32_Process -Filter "Name = 'msedge.exe'" |
+                Where-Object { $_.CommandLine -like "*$work*" } |
+                ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+            return $text
         }
-        Get-CimInstance Win32_Process -Filter "Name = 'msedge.exe'" |
-            Where-Object { $_.CommandLine -like "*$work*" } |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        $dom = Get-Dom "$base/" 'dom'
         $count = { param($pattern) ([regex]::Matches($dom, $pattern)).Count }
         Check 'checklist renders 12 items'        ((& $count 'id="chk-') -eq 12) "(got $(& $count 'id="chk-'))"
         Check 'type dropdown has 8 types'         ((& $count '<option value=') -eq 8)
@@ -368,6 +396,13 @@ try {
         Check 'readiness badges show'             ($dom -match 'class="pill ready">Ready<' -and $dom -match 'class="pill prep">Needs goal, agenda, prep 1/2<')
         Check 'start time field is present'       ($dom -match 'id="f-time"')
         Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
+        Check 'Actions button counts open actions' ($dom -match 'id="actionsCount"[^>]*>3<' -and $dom -match 'id="actionsView"[^>]*hidden')
+
+        # The open actions view: /#actions opens it instead of the run sheet.
+        $dom = Get-Dom "$base/#actions" 'actions'
+        Check 'actions view replaces the run sheet' ($dom -match 'id="sheet"[^>]*hidden' -and $dom -notmatch 'id="actionsView"[^>]*hidden')
+        Check 'actions view groups by due date'     ((& $count 'class="grp"') -eq 2 -and $dom -match '>Overdue <' -and $dom -match '>No due date <') "(got $(& $count 'class="grp"') groups)"
+        Check 'actions view lists actions with a tick box' ($dom -match '<td class="a">Fix save crash</td>' -and (& $count 'aria-label="Done: ') -eq 2) "(got $(& $count 'aria-label="Done: ') boxes)"
     }
 } finally {
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }

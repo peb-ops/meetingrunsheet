@@ -48,6 +48,7 @@
         <span class="status" id="status">New meeting</span>
       </div>
       <div class="toolbar">
+        <button id="actionsBtn" aria-pressed="false" title="Open actions from every meeting">Actions<span class="pill prep" id="actionsCount" hidden></span></button>
         <button id="timerBtn" title="Run the agenda with a clock">&#9654; Start meeting</button>
         <button class="primary" id="saveBtn" title="Ctrl+S">Save</button>
         <div class="menu-wrap">
@@ -76,10 +77,27 @@
       <textarea id="copyFallback" readonly></textarea>
     </div>
 
-    <!-- Cards run in order of importance: the brief (title + goal), agenda, then the outputs
-         (actions, decisions, parking lot), then the checklist and self-review.
+    <!-- Open actions from every meeting, shown instead of the run sheet (showActions in app.js) -->
+    <section class="card open-actions" id="actionsView" aria-labelledby="openActH" hidden>
+      <div class="card-head">
+        <h2 id="openActH" class="card-title">Open actions</h2>
+        <button class="ghost" id="actionsBack">&larr; Back to the run sheet</button>
+      </div>
+      <input id="actFilter" type="search" placeholder="Filter by owner, action, ticket or meeting..." aria-label="Filter actions">
+      <div class="table-wrap" id="openActionsTable">
+        <table>
+          <thead><tr><th>Done</th><th>Action</th><th>Owner</th><th>Due</th><th>Ticket</th><th>Meeting</th></tr></thead>
+          <tbody id="openActionRows"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="openActionsEmpty" hidden></div>
+    </section>
+
+    <!-- The run sheet. Cards run in order of importance: the brief (title + goal), agenda, then the
+         outputs (actions, decisions, parking lot), then the checklist and self-review.
          Each input id is "f-" + a key of FIELDS in app.js.
          data-help on a label becomes a (?) tooltip next to it (see setupHelp in app.js). -->
+    <div class="sheet" id="sheet">
     <section class="card hero" aria-labelledby="briefH">
       <h2 id="briefH" class="sr-only">The brief</h2>
       <p class="follows" id="followsLine" hidden></p>
@@ -139,6 +157,7 @@
     </section>
 
     <section class="card field"><label class="card-title" for="f-reflect" data-help="Goal met? On time? Did everyone who should speak get to? Ask one attendee for feedback too.">Self-review</label><textarea id="f-reflect" rows="3" placeholder="One thing to keep, one thing to change next time"></textarea></section>
+    </div>
   </main>
 </div>
 <!-- Section nav (nav.js): list filled in from NAV_TARGETS -->

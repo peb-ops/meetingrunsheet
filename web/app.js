@@ -430,6 +430,7 @@ function showFollows() {
 }
 
 function renderAll() {
+  if (actionsOn) showActions(false);   // a meeting was opened or started: back to the run sheet
   FIELDS.forEach(f => { $("#f-" + f).value = state.fields[f] ?? ""; });
   if (!typeSel.value) typeSel.value = "general";
   showTip();
@@ -453,6 +454,7 @@ async function loadList() {
   try {
     meetings = (await api("GET", "/api/meetings" + (q ? "?q=" + encodeURIComponent(q) : ""))) || [];
     meetings.forEach(m => { knownMeetings[m.id] = m; });
+    if (!q) showActionCount();
     renderList(q);
     renderCalendar();
     highlight();
@@ -611,6 +613,150 @@ function setupCalendar() {
 
 function highlight() {
   document.querySelectorAll(".item").forEach(b => b.classList.toggle("active", b.dataset.id === state.id));
+}
+
+/* ---- Open actions from every meeting (the Actions button) ---- */
+
+let actionsOn = false;
+let openActions = [];   // rows from GET /api/actions, soonest due first
+
+// Swaps the run sheet for the actions view and back. "#actions" in the address opens it on load.
+function showActions(on) {
+  actionsOn = on;
+  $("#sheet").hidden = on;
+  $("#actionsView").hidden = !on;
+  $("#jumpNav").hidden = on;
+  $("#actionsBtn").setAttribute("aria-pressed", String(on));
+  history.replaceState(null, "", on ? "#actions" : location.pathname + location.search);
+  if (on) {
+    loadActions();
+    window.scrollTo(0, 0);
+  }
+}
+
+// The count on the Actions button, from the unfiltered meeting list.
+function showActionCount() {
+  const sum = key => meetings.reduce((n, m) => n + (m[key] || 0), 0);
+  const open = sum("openActions");
+  const overdue = sum("overdueActions");
+  const pill = $("#actionsCount");
+  pill.hidden = !open;
+  pill.textContent = open;
+  pill.className = "pill " + (overdue ? "overdue" : "prep");
+  pill.title = overdue ? `${overdue} overdue` : "";
+}
+
+async function loadActions() {
+  try {
+    openActions = (await api("GET", "/api/actions")) || [];
+  } catch (e) {
+    openActions = [];
+    toast("Couldn't load the actions: " + e.message);
+  }
+  renderOpenActions();
+}
+
+// Grouped by due date. The filter box matches the action, owner, ticket or meeting.
+function renderOpenActions() {
+  const q = $("#actFilter").value.trim().toLowerCase();
+  const rows = openActions.filter(r => !q || [r.a, r.o, r.t, r.meeting].join("\n").toLowerCase().includes(q));
+  const now = today();
+  const week = new Date();
+  week.setDate(week.getDate() + 7);
+  const soon = isoDay(week);
+  const groups = [
+    ["Overdue", r => r.d && r.d < now],
+    ["Next 7 days", r => r.d >= now && r.d <= soon],
+    ["Later", r => r.d > soon],
+    ["No due date", r => !r.d],
+  ];
+
+  const tbody = $("#openActionRows");
+  tbody.innerHTML = "";
+  groups.forEach(([name, belongs]) => {
+    const items = rows.filter(belongs);
+    if (!items.length) return;
+    const tr = document.createElement("tr");
+    tr.className = "grp";
+    tr.innerHTML = `<th colspan="6">${name} <span class="count">${items.length}</span></th>`;
+    tbody.appendChild(tr);
+    items.forEach(r => tbody.appendChild(openActionRow(r, now)));
+  });
+
+  $("#openActionsTable").hidden = !rows.length;
+  const empty = $("#openActionsEmpty");
+  empty.hidden = rows.length > 0;
+  empty.textContent = openActions.length ? "No open actions match that filter."
+    : "No open actions. Everything is done or carried to a follow-up.";
+}
+
+function openActionRow(r, now) {
+  const tr = document.createElement("tr");
+  tr.classList.toggle("done", !!r.done);
+  const cell = (cls, text) => {
+    const td = document.createElement("td");
+    td.className = cls;
+    td.textContent = text;
+    tr.appendChild(td);
+    return td;
+  };
+
+  const tick = cell("c", "");
+  if (r.id) {
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = !!r.done;
+    box.setAttribute("aria-label", "Done: " + r.a);
+    box.onchange = () => tickAction(r, box, tr);
+    tick.appendChild(box);
+  } else {
+    // Saved before actions had ids (v1.2.0): opening and saving the meeting gives it one.
+    tick.textContent = "–";
+    tick.title = "Open the meeting to tick this one off";
+  }
+
+  cell("a", r.a);
+  cell(r.o ? "" : "warn", r.o || "No owner");
+  cell("due " + (!r.d ? "warn" : r.d < now ? "overdue" : ""), r.d || "No date");
+  cell("", r.t);
+
+  const from = cell("", "");
+  const link = document.createElement("button");
+  link.className = "link";
+  link.textContent = r.meeting || "Untitled meeting";
+  link.onclick = () => guard(() => openMeeting(r.meetingId));
+  from.appendChild(link);
+  if (r.meetingDate) {
+    const when = document.createElement("span");
+    when.className = "when";
+    when.textContent = r.meetingDate;
+    from.appendChild(when);
+  }
+  return tr;
+}
+
+// Ticks one action in its meeting file. The row stays (struck through) so it can be unticked.
+async function tickAction(r, box, tr) {
+  const here = r.meetingId === state.id;
+  if (here && dirty) {
+    box.checked = !box.checked;
+    toast("That action is in the meeting you have open. Save it first.");
+    return;
+  }
+  try {
+    await api("PUT", `/api/meetings/${r.meetingId}/actions/${encodeURIComponent(r.id)}`, { done: box.checked });
+    r.done = box.checked;
+    tr.classList.toggle("done", r.done);
+    if (here) {
+      const mine = state.actions.find(a => a.id === r.id);
+      if (mine) mine.done = r.done;
+      renderActions();
+    }
+    loadList();
+  } catch (e) {
+    box.checked = !box.checked;
+    toast("Couldn't update that action: " + e.message);
+  }
 }
 
 /* ---- Commands: open, save, new, follow-up, delete ---- */
@@ -945,6 +1091,9 @@ $("#deleteBtn").onclick = () => ask(`Delete "${state.fields.title || "Untitled m
 $("#addAction").onclick = addAction;
 $("#addAgenda").onclick = () => agendaEditor.add(state.agenda.length);
 $("#addAttendee").onclick = () => attendeeEditor.add(state.attendees.length);
+$("#actionsBtn").onclick = () => showActions(!actionsOn);
+$("#actionsBack").onclick = () => showActions(false);
+$("#actFilter").addEventListener("input", renderOpenActions);
 $("#copyBtn").onclick = copyNotes;
 $("#backupBtn").onclick = () => download("/api/backup");
 $("#csvBtn").onclick = () => download("/api/actions.csv");
@@ -976,3 +1125,4 @@ fillTypeOptions();
 renderAll();
 loadList();
 offerDraft();
+if (location.hash === "#actions") showActions(true);

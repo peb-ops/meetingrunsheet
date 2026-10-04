@@ -5,6 +5,7 @@
 #   $store.Exists($id); $store.ReadRaw($id)
 #   $store.Create($json); $store.Update($json, $id); $store.Remove($id)
 #   $store.BackupZip(); $store.RestoreZip($bytes); $store.ActionsCsv()
+#   $store.OpenActions(); $store.SetActionDone($id, $actionId, $true)
 #
 # Files are UTF-8 without BOM and written temp-then-move, so a crash never leaves
 # a half-written meeting.
@@ -224,6 +225,43 @@ class MeetingStore {
         $text = [string]$value
         if ($text -match '^[=+\-@\t\r]') { $text = "'" + $text }
         return '"' + $text.Replace('"', '""') + '"'
+    }
+
+    # ---- Actions across meetings ----
+
+    # Every open action in every meeting, soonest due first (no due date last):
+    # {meetingId, meeting, meetingDate, id, a, o, d, t}. "id" is '' in files from before v1.2.0
+    # that haven't been saved since, so those can't be ticked off with SetActionDone.
+    [object[]] OpenActions() {
+        $items = New-Object System.Collections.Generic.List[object]
+        foreach ($s in $this.List('')) {
+            $m = $this.Read($s.id)
+            foreach ($a in @($m.actions | Where-Object { [MeetingStore]::IsOpen($_) })) {
+                $items.Add([pscustomobject]@{
+                    meetingId   = $s.id
+                    meeting     = [string]$s.title
+                    meetingDate = $s.date
+                    id          = [string]$a.id
+                    a           = [string]$a.a
+                    o           = [string]$a.o
+                    d           = [MeetingStore]::DayText($a.d)
+                    t           = [string]$a.t
+                })
+            }
+        }
+        return @($items | Sort-Object -Property @{ Expression = { if ($_.d) { $_.d } else { '9999' } } },
+                                                @{ Expression = { "$($_.meetingDate)" } })
+    }
+
+    # Ticks (or unticks) one action and leaves the rest of the meeting as it is. Like SyncCarried,
+    # this doesn't change savedAt. Returns $false if the meeting has no action with that id.
+    [bool] SetActionDone([string] $id, [string] $actionId, [bool] $done) {
+        $meeting = $this.Read($id)
+        $action = @($meeting.actions | Where-Object { $_.id -and [string]$_.id -eq $actionId }) | Select-Object -First 1
+        if (-not $action) { return $false }
+        $action | Add-Member -NotePropertyName done -NotePropertyValue $done -Force
+        $this.Write($meeting)
+        return $true
     }
 
     # ---- Internals ----
