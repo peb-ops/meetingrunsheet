@@ -1,6 +1,9 @@
 /* Meeting Run Sheet styles. Edit, then refresh the browser. */
 
-/* ---- Theme: colours and fonts (light, then dark) ---- */
+/* ---- Theme: colours and fonts (light, then dark) ----
+   A theme picked in the "..." menu is <html data-theme> (theme.js); with none picked, the system
+   setting chooses light or dark. The two dark blocks must stay the same. To add a theme: a block
+   here with every colour, and a line in THEMES in theme.js. */
 :root{
   --bg:#F5F6F8; --surface:#FFFFFF; --field:#F8F9FB; --ink:#16181D; --muted:#626B7A; --faint:#8A92A0;
   --line:#E4E7EC; --line-strong:#D2D6DD;
@@ -15,7 +18,7 @@
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
-  :root{
+  :root:not([data-theme]){
     --bg:#0F1115; --surface:#171A20; --field:#1D2128; --ink:#E8EAEE; --muted:#9AA2AF; --faint:#727A88;
     --line:#262A33; --line-strong:#333844;
     --accent:#8B85FF; --accent-ink:#0F1115; --accent-soft:#23233A; --ring:rgba(139,133,255,.3);
@@ -23,6 +26,52 @@
     --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-lg:0 12px 32px rgba(0,0,0,.5);
     color-scheme:dark;
   }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1115; --surface:#171A20; --field:#1D2128; --ink:#E8EAEE; --muted:#9AA2AF; --faint:#727A88;
+  --line:#262A33; --line-strong:#333844;
+  --accent:#8B85FF; --accent-ink:#0F1115; --accent-soft:#23233A; --ring:rgba(139,133,255,.3);
+  --done:#4ADE80; --warn:#F59E5B; --danger:#F87171;
+  --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+/* Paper: warm light */
+:root[data-theme="paper"]{
+  --bg:#F4EFE6; --surface:#FBF8F1; --field:#F1EBDF; --ink:#2B2620; --muted:#6B6154; --faint:#8F8576;
+  --line:#E3DACB; --line-strong:#D0C5B2;
+  --accent:#17695F; --accent-ink:#FFFFFF; --accent-soft:#DDEDE8; --ring:rgba(23,105,95,.22);
+  --done:#2F7D3B; --warn:#B45309; --danger:#C0392B;
+  --shadow:0 1px 2px rgba(60,40,16,.05),0 1px 3px rgba(60,40,16,.07);
+  --shadow-lg:0 12px 32px rgba(60,40,16,.16),0 2px 6px rgba(60,40,16,.07);
+  color-scheme:light;
+}
+/* Sky: light blue */
+:root[data-theme="sky"]{
+  --bg:#EAF2FB; --surface:#FFFFFF; --field:#F2F7FC; --ink:#0F2233; --muted:#52667A; --faint:#7E90A3;
+  --line:#D6E3F1; --line-strong:#BFD0E3;
+  --accent:#0B6BCB; --accent-ink:#FFFFFF; --accent-soft:#E0EDFC; --ring:rgba(11,107,203,.22);
+  --done:#15803D; --warn:#B45309; --danger:#DC2626;
+  --shadow:0 1px 2px rgba(15,34,51,.05),0 1px 3px rgba(15,34,51,.07);
+  --shadow-lg:0 12px 32px rgba(15,34,51,.16),0 2px 6px rgba(15,34,51,.07);
+  color-scheme:light;
+}
+/* Midnight: dark navy */
+:root[data-theme="midnight"]{
+  --bg:#0A1020; --surface:#111A2E; --field:#17223A; --ink:#E6ECF7; --muted:#94A3BD; --faint:#6B7A96;
+  --line:#1F2B45; --line-strong:#2C3A5A;
+  --accent:#38BDF8; --accent-ink:#06121F; --accent-soft:#12304A; --ring:rgba(56,189,248,.3);
+  --done:#4ADE80; --warn:#FBBF6B; --danger:#F87171;
+  --shadow:0 1px 2px rgba(0,0,0,.35); --shadow-lg:0 12px 32px rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+/* Forest: dark green */
+:root[data-theme="forest"]{
+  --bg:#0D1411; --surface:#141D18; --field:#1A251F; --ink:#E4ECE6; --muted:#97A89D; --faint:#6E7F74;
+  --line:#223029; --line-strong:#2F4037;
+  --accent:#5FD08A; --accent-ink:#0B140F; --accent-soft:#1B3327; --ring:rgba(95,208,138,.3);
+  --done:#4ADE80; --warn:#F5B45B; --danger:#F87171;
+  --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-lg:0 12px 32px rgba(0,0,0,.5);
+  color-scheme:dark;
 }
 
 /* ---- Base ---- */
@@ -71,8 +120,7 @@ textarea{resize:vertical;min-height:72px;line-height:1.55}
 .hint{margin:0;font-size:13px;color:var(--muted)}
 .grid{display:grid;gap:20px;align-items:start}
 .grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
-.grid.two.wide-left{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
-@media (max-width:760px){.grid.two,.grid.two.wide-left{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:760px){.grid.two{grid-template-columns:minmax(0,1fr)}}
 
 /* ---- Sidebar: past meetings ---- */
 /* The column stays in view while the page scrolls: the calendar card on top keeps its size, and
@@ -131,20 +179,64 @@ main{display:flex;flex-direction:column;gap:20px;min-width:0}
 .menu button{border:0;background:transparent;text-align:left;padding:8px 10px}
 .menu button:hover{background:var(--field)}
 .menu hr{border:0;border-top:1px solid var(--line);margin:5px 4px}
+.theme-list{display:flex;flex-direction:column}
+.theme-list button{position:relative;padding-left:30px}
+.theme-list button[aria-checked="true"]::before{content:"\2713";position:absolute;left:11px;color:var(--accent)}
 .confirm{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
 
 /* ---- Meeting timer (timer.js) ---- */
-.timer{position:sticky;top:8px;z-index:6;display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;box-shadow:var(--shadow-lg)}
+/* An inverted band (ink background), so it stands apart from the cards in both themes.
+   .timer-segs: one segment per agenda item (renderTimer): done, the current one filling, to come. */
+.timer{position:sticky;top:8px;z-index:6;display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;background:var(--ink);color:var(--bg);border:2px solid var(--ink);border-radius:var(--radius);padding:14px 18px;box-shadow:var(--shadow-lg)}
+.timer .label,.timer-total{color:color-mix(in srgb,var(--bg) 72%,var(--ink))}
+.timer-segs{flex:1 1 100%;display:flex;gap:3px;height:8px}
+.timer-segs i{min-width:3px;border-radius:3px;overflow:hidden;background:color-mix(in srgb,var(--bg) 24%,var(--ink))}
+.timer-segs i.done{background:color-mix(in srgb,var(--accent) 60%,var(--bg))}
+.timer-segs i b{display:block;height:100%;background:var(--bg)}
 .timer-now{flex:1 1 220px;min-width:0;display:flex;flex-direction:column}
 .timer-now .label{font-size:12px}
 .timer-now b{font-size:16px;font-weight:600;overflow-wrap:anywhere}
 .timer-clock{font-family:var(--mono);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums}
-.timer-total{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
-.timer-total.over{color:var(--danger)}
+.timer-total{font-size:13px;font-variant-numeric:tabular-nums}
+.timer-total.over{color:color-mix(in srgb,var(--danger) 60%,var(--bg))}
 .timer.warn{border-color:var(--warn)}
-.timer.warn .timer-clock{color:var(--warn)}
+.timer.warn .timer-clock{color:color-mix(in srgb,var(--warn) 55%,var(--bg))}
 .timer.over{border-color:var(--danger)}
-.timer.over .timer-clock{color:var(--danger)}
+.timer.over .timer-clock{color:color-mix(in srgb,var(--danger) 60%,var(--bg))}
+
+/* ---- Phases: Plan / Run / Wrap up (setPhase in app.js) ----
+   The sheet shows the cards whose data-in lists the current phase, and the checklist card shows
+   that phase's items only (before = Plan, during = Run, after = Wrap up). */
+.sheet[data-phase="plan"] [data-in]:not([data-in~="plan"]),
+.sheet[data-phase="run"] [data-in]:not([data-in~="run"]),
+.sheet[data-phase="wrap"] [data-in]:not([data-in~="wrap"]),
+.sheet[data-phase="plan"] .phase:not([data-id="before"]),
+.sheet[data-phase="run"] .phase:not([data-id="during"]),
+.sheet[data-phase="wrap"] .phase:not([data-id="after"]){display:none}
+.phase-tabs{display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.phase-tabs button{border:0;background:transparent;padding:7px 16px;border-radius:7px;white-space:nowrap}
+.phase-tabs button:hover{background:var(--field)}
+.phase-tabs button[aria-current="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+/* Main column and side column; the side one drops below when there isn't room */
+.cols{display:flex;flex-wrap:wrap;align-items:flex-start;gap:20px}
+.col-main{flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:20px}
+.col-side{flex:1 1 290px;min-width:0;display:flex;flex-direction:column;gap:20px}
+/* The strip on top of Plan (readiness) and Wrap up (outcome), filled in by showStrips() */
+.strip{display:flex;flex-wrap:wrap;align-items:center;gap:10px 26px;padding:14px 20px}
+.strip > button{margin-left:auto}
+.strip b{font-weight:600}
+.ready-item::before{content:"";display:inline-block;width:9px;height:9px;margin-right:8px;border-radius:50%;border:2px solid var(--warn)}
+.ready-item.ok::before{border-color:var(--done);background:var(--done)}
+.outcome-goal{flex:999 1 260px;min-width:0;display:flex;flex-direction:column}
+.outcome-goal b{font-size:16px;overflow-wrap:anywhere}
+.strip-warn{color:var(--warn);font-weight:600}
+.tools{display:flex;flex-wrap:wrap;gap:8px}
+/* Agenda bar: each item's share of the timebox (showAgendaSum) */
+.agenda-bar{display:flex;gap:3px;height:8px;margin-bottom:12px}
+.agenda-bar i{min-width:3px;border-radius:3px;background:var(--accent)}
+.agenda-bar i:nth-child(even){background:color-mix(in srgb,var(--accent) 50%,var(--surface))}
+.agenda-bar i.spare{background:var(--line)}
+.agenda-bar i.over{background:var(--danger)}
 
 /* ---- The brief (hero card) ---- */
 .hero{padding:24px 24px 20px;display:flex;flex-direction:column;gap:16px}
@@ -184,7 +276,88 @@ table.row-table{min-width:0}
 .agenda-sum{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .agenda-sum.warn{color:var(--warn)}
 
-/* ---- Action items ---- */
+/* Agenda: rows made to be read. The title wraps: its textarea sits on a hidden copy of its text
+   (.grow span), and the copy sets the height. The rail (td.at) shows when each item starts.
+   The arrows and x only show for the row in use. Row classes: over / cut from showAgendaTimes()
+   in app.js, now / past from markAgendaNow() in timer.js. */
+.agenda-table{table-layout:fixed}
+.agenda-table td{vertical-align:top;padding:4px 3px}
+.agenda-table tr + tr td{border-top:1px solid var(--line)}
+.agenda-table td.at,.agenda-table td.n{padding-top:12px;line-height:21px}
+.agenda-table td.at{width:58px;padding-left:10px;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.agenda-table td.mv,.agenda-table td.x{padding-top:8px}
+.grow{display:grid}
+.grow > *{grid-area:1/1;min-width:0;font:inherit;font-size:14.5px;line-height:1.45;padding:7px 9px;border:1px solid transparent;border-radius:var(--radius-sm);white-space:pre-wrap;overflow-wrap:anywhere}
+.grow span{visibility:hidden}
+.grow textarea{min-height:0;resize:none;overflow:hidden;background:var(--field);border-color:var(--line)}
+.grow textarea:hover{border-color:var(--line-strong)}
+.grow textarea:focus{background:var(--surface);border-color:var(--accent)}
+@media (hover:hover){.agenda-table tr:not(:hover):not(:focus-within) td.mv button,.agenda-table tr:not(:hover):not(:focus-within) td.x button{opacity:0}}
+.agenda-table tr.over td.at{color:var(--danger)}
+.agenda-table tr.cut td{border-top:2px dashed var(--danger)}
+.agenda-table tr.cut td.t{position:relative}
+.agenda-table tr.cut td.t::before{content:"Timebox ends";position:absolute;right:8px;top:-9px;padding:0 6px;background:var(--surface);font-size:11px;font-weight:600;line-height:16px;color:var(--danger)}
+.agenda-table tr.now td{background:var(--accent-soft)}
+.agenda-table tr.now td.at{color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.agenda-table tr.now .grow > *{font-weight:600}
+.agenda-table tr.past td.at,.agenda-table tr.past td.n,.agenda-table tr.past td.min,.agenda-table tr.past .t-line{opacity:.5}
+@media (max-width:520px){.agenda-table td.n{display:none}}
+
+/* An agenda item's record: the Notes button beside the title opens .rec (decision + notes).
+   Closed, .rec-sum shows what is recorded as one line (showRecord in app.js). */
+.t-line{display:flex;align-items:flex-start;gap:4px}
+.t-line .grow{flex:1;min-width:0}
+.rec-toggle{flex:none;margin-top:5px;padding:3px 8px;font-size:12.5px;border-color:transparent;background:transparent;color:var(--faint)}
+.rec-toggle:hover{color:var(--ink)}
+.rec-toggle[aria-expanded="true"]{background:var(--accent-soft);color:var(--accent)}
+.rec-sum{display:block;max-width:100%;margin:0 0 6px 10px;padding:1px 8px;border:0;border-left:3px solid var(--line-strong);border-radius:0;background:transparent;text-align:left;font-size:13.5px;font-weight:400;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec-sum.decided{border-left-color:var(--done);color:var(--ink);white-space:normal;overflow-wrap:anywhere}
+.rec{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;align-items:start;margin:2px 0 8px 10px}
+.rec .label{padding-top:9px}
+.agenda-table tr.now .rec .grow > *{font-weight:400}
+.agenda-table tr.now .grow textarea{background:var(--surface)}
+
+/* Actions on agenda items (actionLine / showItemActions in app.js): one line per action under an
+   item's record. */
+.rec > span.label{padding-top:9px}
+.rec-acts{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rec-acts > button{align-self:flex-start}
+/* Two rows, so the text has the full width: the action, then owner | due | remove */
+.act-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 28px;gap:4px 6px;align-items:center;padding-bottom:6px}
+.act-line .grow{grid-column:1/-1}
+.act-line input{padding:7px 9px}
+.act-line input.missing,.act-line input.missing:hover{border-color:var(--warn);border-style:dashed}
+.act-line input.overdue{color:var(--danger);font-weight:600}
+.act-line.done textarea{text-decoration:line-through;color:var(--faint)}
+.act-line.carried textarea,.act-line.carried input{color:var(--faint);font-style:italic}
+.act-line button{padding:3px 7px;border-color:transparent;background:transparent;color:var(--faint)}
+.act-line button:hover{background:var(--field);color:var(--ink)}
+
+/* Summary card in Wrap up (showSummary in app.js) */
+.summary{display:flex;flex-direction:column}
+.sum-item{display:flex;flex-direction:column;gap:4px;padding:12px 0;border-top:1px solid var(--line)}
+.sum-item:first-child{border-top:0;padding-top:0}
+.sum-item:last-child{padding-bottom:0}
+.sum-item .link{align-self:flex-start;text-align:left;font-weight:600;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}
+.sum-item .link:hover{color:var(--accent);background:none}
+.sum-dec{display:flex;gap:8px;align-items:baseline;overflow-wrap:anywhere}
+.tag{flex:none;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--done) 14%,transparent);color:var(--done)}
+.sum-none{font-size:13.5px;color:var(--muted)}
+.sum-acts{margin:2px 0 0;padding-left:20px;overflow-wrap:anywhere}
+.sum-acts li.done{color:var(--faint)}
+.sum-acts .who{color:var(--muted)}
+.sum-acts .warn{color:var(--warn);font-weight:600}
+
+.sum-head{font-weight:600}
+.parked{margin:2px 0 0;padding-left:20px;overflow-wrap:anywhere}
+
+/* Attendees: the name rows flow into as many columns as fit */
+table.people{display:block}
+.people tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 16px}
+.people tr{display:flex;align-items:center}
+.people td:first-child{flex:1;min-width:0}
+
+/* ---- Tables (the open actions view) ---- */
 .table-wrap{overflow-x:auto;margin:0 -6px;padding:0 6px}
 table{width:100%;border-collapse:collapse;min-width:600px}
 th{text-align:left;padding:6px;font-size:12.5px;font-weight:500;color:var(--muted);border-bottom:1px solid var(--line)}
@@ -195,17 +368,9 @@ td input[type=text]:hover,td input[type=date]:hover{border-color:var(--line)}
 td input[type=text]:focus,td input[type=date]:focus{background:var(--surface)}
 td.c{width:48px;text-align:center}
 td.c input{width:17px;height:17px;accent-color:var(--done)}
-tr.done input[type=text]{text-decoration:line-through;color:var(--faint)}
-td input.missing,td input.missing:hover{border-color:var(--warn);border-style:dashed}
-td input.overdue{color:var(--danger);font-weight:600}
-tr.carried input[type=text],tr.carried input[type=date]{color:var(--faint);font-style:italic}
-td.c .carried-link{padding:2px 7px;font-size:15px;line-height:1;color:var(--accent)}
+tr.done input[type=text],tr.done textarea{text-decoration:line-through;color:var(--faint)}
 td.x{width:40px}
-/* Ticket box with its link arrow (linkTicket in app.js), and the tracker address box */
-.tk{display:flex;align-items:center;gap:2px}
-.tk input{min-width:0}
-.ticket-go{flex:none;padding:2px 6px;border-radius:6px;font-size:15px;line-height:1.2;text-decoration:none}
-.ticket-go:hover{background:var(--accent-soft)}
+/* Links, and the tracker address box */
 a{color:var(--accent);text-underline-offset:2px}
 a:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring);border-radius:4px}
 .ticket-box{display:flex;flex-direction:column;gap:8px}

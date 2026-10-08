@@ -20,12 +20,20 @@ using module .\WebRoot.psm1
 #   GET    /api/actions        every open action in every meeting, soonest due first
 #   PUT    /api/meetings/{id}/actions/{actionId}   body {"done": true|false}: tick one action
 # Saving or deleting a follow-up also updates "carried" on its original meeting (see MeetingStore).
+# Request bodies are capped (MaxBody, MaxBackup); a bigger one gets 413.
+
+# Thrown by ReadBytes when a request body is over its limit; Handle answers it with 413.
+class RequestTooLarge : System.Exception {
+    RequestTooLarge([string] $message) : base($message) { }
+}
 
 class RunSheetServer {
     [int] $Port
     [string] $Prefix
     [MeetingStore] $Store
     [WebRoot] $Web
+    static [long] $MaxBody   = 5MB     # one meeting as JSON
+    static [long] $MaxBackup = 100MB   # a backup zip
     hidden [System.Net.HttpListener] $Listener
     hidden [System.Text.Encoding] $Utf8 = (New-Object System.Text.UTF8Encoding($false))
 
@@ -64,7 +72,11 @@ class RunSheetServer {
             $this.Route($ctx)
         } catch {
             Write-Warning "$($ctx.Request.HttpMethod) $($ctx.Request.Url.AbsolutePath): $($_.Exception.Message)"
-            try { $this.SendJson($ctx, @{ error = $_.Exception.Message }, 500) } catch { }
+            # The details (which can include file paths) stay in this window, not in the response.
+            $status  = 500
+            $message = 'Something went wrong. The PowerShell window has the details.'
+            if ($_.Exception -is [RequestTooLarge]) { $status = 413; $message = $_.Exception.Message }
+            try { $this.SendJson($ctx, @{ error = $message }, $status) } catch { }
         }
     }
 
@@ -112,8 +124,7 @@ class RunSheetServer {
                     $this.SendDownload($ctx, $this.Store.BackupZip(), 'application/zip', $name); return
                 }
                 'POST' {
-                    if ($req.ContentLength64 -gt 100MB) { $this.SendJson($ctx, @{ error = 'Backup file is too large' }, 413); return }
-                    $result = $this.Store.RestoreZip($this.ReadBytes($req))
+                    $result = $this.Store.RestoreZip($this.ReadBytes($req, [RunSheetServer]::MaxBackup))
                     if ($null -eq $result) { $this.SendJson($ctx, @{ error = "That file isn't a backup zip" }, 400); return }
                     $this.SendJson($ctx, $result, 200); return
                 }
@@ -161,13 +172,23 @@ class RunSheetServer {
     # ---- Request / response helpers ----
 
     hidden [string] ReadBody([System.Net.HttpListenerRequest] $request) {
-        $reader = New-Object System.IO.StreamReader($request.InputStream, $this.Utf8)
+        $bytes  = $this.ReadBytes($request, [RunSheetServer]::MaxBody)
+        $reader = New-Object System.IO.StreamReader((New-Object System.IO.MemoryStream(, $bytes)), $this.Utf8)
         try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
     }
 
-    hidden [byte[]] ReadBytes([System.Net.HttpListenerRequest] $request) {
+    # The request body, or a RequestTooLarge error once it passes $max bytes. Counts what is
+    # actually read, because a chunked upload has no Content-Length to check.
+    hidden [byte[]] ReadBytes([System.Net.HttpListenerRequest] $request, [long] $max) {
+        $tooLarge = "That is too large (the limit is $([int]($max / 1MB)) MB)"
+        if ($request.ContentLength64 -gt $max) { throw [RequestTooLarge]::new($tooLarge) }
         $buffer = New-Object System.IO.MemoryStream
-        $request.InputStream.CopyTo($buffer)
+        $chunk  = New-Object byte[] 65536
+        $n = 0
+        while (($n = $request.InputStream.Read($chunk, 0, $chunk.Length)) -gt 0) {
+            if ($buffer.Length + $n -gt $max) { throw [RequestTooLarge]::new($tooLarge) }
+            $buffer.Write($chunk, 0, $n)
+        }
         return $buffer.ToArray()
     }
 
@@ -182,6 +203,10 @@ class RunSheetServer {
         $res.StatusCode  = $status
         $res.ContentType = $contentType
         $res.Headers['Cache-Control'] = 'no-store'   # always serve the latest page files and data
+        # Other websites can't put the page in a frame (clickjacking), and the page only loads its own files.
+        $res.Headers['X-Frame-Options'] = 'DENY'
+        $res.Headers['X-Content-Type-Options'] = 'nosniff'
+        $res.Headers['Content-Security-Policy'] = "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
         $res.ContentLength64 = $bytes.Length
         $res.OutputStream.Write($bytes, 0, $bytes.Length)
         $res.OutputStream.Close()

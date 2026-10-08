@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Meeting Run Sheet</title>
 <link rel="stylesheet" href="styles.css">
+<!-- Up here so a chosen theme is set before the page is drawn -->
+<script src="theme.js"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -36,8 +38,9 @@
     <div class="timer" id="timerBar" hidden>
       <div class="timer-now"><span class="label" id="tLabel"></span><b id="tItem"></b></div>
       <div class="timer-clock" id="tItemLeft"></div>
-      <div class="timer-total"><span class="label">Meeting</span> <span id="tTotal"></span></div>
+      <div class="timer-total"><span class="label">Meeting</span> <span id="tTotal"></span> <span id="tPace"></span></div>
       <div class="toolbar"><button id="tNext">Next item</button><button id="tStop">Stop</button></div>
+      <div class="timer-segs" id="tSegs" aria-hidden="true"></div>
     </div>
 
     <!-- Top bar: the everyday buttons; the rest are in the "..." menu (setupMenu in app.js) -->
@@ -47,9 +50,12 @@
         <h1>Run sheet</h1>
         <span class="status" id="status">New meeting</span>
       </div>
+      <!-- The sheet shows one phase at a time (setPhase in app.js) -->
+      <nav class="phase-tabs" id="phaseTabs" aria-label="Meeting phase">
+        <button data-phase="plan" aria-current="true">1 Plan</button><button data-phase="run">2 Run</button><button data-phase="wrap">3 Wrap up</button>
+      </nav>
       <div class="toolbar">
         <button id="actionsBtn" aria-pressed="false" title="Open actions from every meeting">Actions<span class="pill prep" id="actionsCount" hidden></span></button>
-        <button id="timerBtn" title="Run the agenda with a clock">&#9654; Start meeting</button>
         <button class="primary" id="saveBtn" title="Ctrl+S">Save</button>
         <div class="menu-wrap">
           <button class="icon" id="moreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="moreMenu" title="More">&#8943;</button>
@@ -63,6 +69,9 @@
             <button role="menuitem" id="csvBtn" title="Every action from every meeting, for Excel or a tracker import">Export actions (CSV)</button>
             <hr>
             <button role="menuitem" id="ticketBtn" title="Turn ticket keys into links to your tracker">Ticket links...</button>
+            <button role="menuitem" id="themeBtn" aria-expanded="false" aria-controls="themeList" title="System follows your Windows or browser setting">Theme: System</button>
+            <!-- One button per theme (setupTheme in app.js, from THEMES in theme.js) -->
+            <div class="theme-list" id="themeList" role="group" aria-label="Theme" hidden></div>
             <hr>
             <button role="menuitem" class="danger" id="deleteBtn" hidden>Delete meeting</button>
           </div>
@@ -103,12 +112,27 @@
       <div class="empty" id="openActionsEmpty" hidden></div>
     </section>
 
-    <!-- The run sheet. Cards run in order of importance: the brief (title + goal), agenda, then the
-         outputs (actions, decisions, parking lot), then the checklist and self-review.
-         Each input id is "f-" + a key of FIELDS in app.js.
+    <!-- The run sheet, one phase at a time: Plan (brief, agenda, attendees), Run (agenda with its
+         records, actions, parking lot) and Wrap up (decisions, actions, notes, self-review).
+         data-in lists the phases a card shows in; styles.css hides the rest, and the checklist
+         card shows only its own phase's items. Each input id is "f-" + a key of FIELDS in app.js
+         (fields.parking has no input: it is the parking lot list; fields.decisions has none since
+         the Other decisions box was removed, and only shows in Copy notes).
          data-help on a label becomes a (?) tooltip next to it (see setupHelp in app.js). -->
-    <div class="sheet" id="sheet">
-    <section class="card hero" aria-labelledby="briefH">
+    <div class="sheet" id="sheet" data-phase="plan">
+    <!-- Is the meeting ready? Filled in by showStrips() in app.js -->
+    <section class="card strip" data-in="plan" aria-label="Readiness">
+      <span class="ready-item" id="rGoal"></span><span class="ready-item" id="rAgenda"></span><span class="ready-item" id="rPrep"></span>
+      <button class="primary" id="timerBtn" title="Run the agenda with a clock">&#9654; Start meeting</button>
+    </section>
+    <!-- What came out of the meeting (showStrips) -->
+    <section class="card strip" data-in="wrap" aria-label="Outcome">
+      <div class="outcome-goal"><span class="label">We wanted to leave with</span><b id="oGoal"></b></div>
+      <span id="oDecisions"></span><span id="oActions"></span><span class="strip-warn" id="oWeak" hidden></span>
+      <button class="primary" id="copyStripBtn" title="Plain text, for chat or email">Copy notes</button>
+    </section>
+
+    <section class="card hero" data-in="plan" aria-labelledby="briefH">
       <h2 id="briefH" class="sr-only">The brief</h2>
       <p class="follows" id="followsLine" hidden></p>
       <input id="f-title" class="title-input" type="text" placeholder="Untitled meeting" aria-label="Meeting title">
@@ -126,49 +150,62 @@
       <div class="tip" id="typeTip"></div>
     </section>
 
-    <div class="grid two wide-left">
-      <!-- Agenda: rows built by agendaEditor (rowEditor in app.js), saved as meeting.agenda -->
-      <section class="card">
-        <span class="card-title" data-for="agendaRows" data-help="One row per item, with its minutes. Put decision items first, while energy is high. The minutes should add up to the timebox. Press Enter in a row to add the next item.">Agenda</span>
-        <table class="row-table"><tbody id="agendaRows"></tbody></table>
-        <div class="row-foot"><button class="ghost" id="addAgenda">+ Add item</button><button class="ghost" id="useTemplate" title="Fill the agenda with a starter for this meeting type" hidden></button><div class="agenda-sum" id="agendaSum" aria-live="polite" hidden></div></div>
+    <div class="cols">
+    <div class="col-main">
+      <!-- Agenda: rows built by agendaEditor (rowEditor in app.js), saved as meeting.agenda.
+           The bar shows each item's share of the timebox; the left rail when each item starts. -->
+      <section class="card" data-in="plan run">
+        <span class="card-title" data-for="agendaRows" data-help="One row per item, with its minutes. Put decision items first, while energy is high. The minutes should add up to the timebox. The time on the left is when the item starts. Notes opens a place to record what was decided and discussed on that item, and the actions that came out of it. Press Enter in a row to add the next item.">Agenda</span>
+        <div class="agenda-bar" id="agendaBar" aria-hidden="true" hidden></div>
+        <table class="row-table agenda-table"><tbody id="agendaRows"></tbody></table>
+        <div class="row-foot"><button class="ghost" id="addAgenda">+ Add item</button><div class="agenda-sum" id="agendaSum" aria-live="polite" hidden></div></div>
       </section>
+
+      <!-- Summary: every agenda item with its decision and its actions, then the parking lot
+           (showSummary in app.js) -->
+      <section class="card" data-in="wrap" aria-labelledby="sumH">
+        <h2 id="sumH" class="card-title">Summary</h2>
+        <div class="summary" id="summary"></div>
+      </section>
+
+      <!-- Parking lot: saved as fields.parking, one item per line. Run edits it as a list
+           (parkingEditor, rowEditor in app.js); Wrap up shows it at the end of the summary. -->
+      <section class="card" data-in="run">
+        <span class="card-title" data-for="parkingRows" data-help="Off-topic items raised in the meeting, and who follows up on each. Press Enter in a row to add the next one.">Parking lot</span>
+        <table class="row-table"><tbody id="parkingRows"></tbody></table>
+        <div class="row-foot"><button class="ghost" id="addParking">+ Add item</button></div>
+      </section>
+      <!-- Suggestions for the Owner boxes of the action lines (fillOwnerList in app.js) -->
+      <datalist id="ownerList"></datalist>
+    </div>
+
+    <div class="col-side">
       <!-- Attendees: rows built by attendeeEditor (rowEditor in app.js), saved as meeting.attendees -->
-      <section class="card">
+      <section class="card" data-in="plan">
         <span class="card-title" data-for="attendeeRows" data-help="Deciders and key information holders only. Everyone else gets the notes. Press Enter in a row to add the next person.">Attendees</span>
-        <table class="row-table"><tbody id="attendeeRows"></tbody></table>
+        <table class="row-table people"><tbody id="attendeeRows"></tbody></table>
         <div class="row-foot"><button class="ghost" id="addAttendee">+ Add person</button></div>
       </section>
+
+      <!-- Checklist: filled in from PHASES in content.js; only the current phase's items show -->
+      <section class="card" aria-labelledby="chkH">
+        <h2 id="chkH" class="card-title">Facilitation checklist</h2>
+        <div class="phases" id="phases"></div>
+      </section>
+
+      <section class="card" data-in="wrap" aria-labelledby="sendH">
+        <h2 id="sendH" class="card-title">Send and follow up</h2>
+        <div class="tools">
+          <button id="copyMdBtn2" title="With headings and ticket links, for a wiki, Confluence or GitHub">Copy notes as Markdown</button>
+          <button id="followBtn2" title="New meeting with the same brief and any open actions">Follow-up meeting</button>
+        </div>
+      </section>
+
+      <section class="card field" data-in="wrap"><label class="card-title" for="f-reflect" data-help="Goal met? On time? Did everyone who should speak get to? Ask one attendee for feedback too.">Self-review</label>
+        <div class="field"><label class="label" for="f-goalmet">Did we meet the goal?</label><select id="f-goalmet"><option value="">Not answered</option><option value="yes">Yes</option><option value="partly">Partly</option><option value="no">No</option></select></div>
+        <textarea id="f-reflect" rows="3" placeholder="One thing to keep, one thing to change next time"></textarea></section>
     </div>
-
-    <section class="card" aria-labelledby="actH">
-      <div class="card-head">
-        <h2 id="actH" class="card-title">Action items</h2>
-        <p class="hint">Every action needs one owner and a date. "We'll look into it" is not an action.</p>
-      </div>
-      <div class="table-wrap">
-        <table class="actions">
-          <thead><tr><th>Done</th><th>Action</th><th>Owner</th><th>Due</th><th>Ticket</th><th></th></tr></thead>
-          <tbody id="actionRows"></tbody>
-        </table>
-      </div>
-      <div class="row-foot"><button class="ghost" id="addAction">+ Add action</button></div>
-      <!-- Suggestions for the Owner boxes (fillOwnerList in app.js) -->
-      <datalist id="ownerList"></datalist>
-    </section>
-
-    <div class="grid two">
-      <section class="card field"><label class="card-title" for="f-decisions" data-help="One per line. State the decision, not the discussion.">Decisions</label><textarea id="f-decisions" rows="5" placeholder="e.g. Cloud saves are cut from M3"></textarea></section>
-      <section class="card field"><label class="card-title" for="f-parking" data-help="Off-topic items raised in the meeting, and who follows up on each.">Parking lot</label><textarea id="f-parking" rows="5" placeholder="e.g. Controller remapping - Sam starts a thread"></textarea></section>
     </div>
-
-    <!-- Checklist: filled in from PHASES in content.js -->
-    <section class="card" aria-labelledby="chkH">
-      <h2 id="chkH" class="card-title">Facilitation checklist</h2>
-      <div class="phases" id="phases"></div>
-    </section>
-
-    <section class="card field"><label class="card-title" for="f-reflect" data-help="Goal met? On time? Did everyone who should speak get to? Ask one attendee for feedback too.">Self-review</label><textarea id="f-reflect" rows="3" placeholder="One thing to keep, one thing to change next time"></textarea></section>
     </div>
   </main>
 </div>

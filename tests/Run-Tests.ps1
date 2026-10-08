@@ -73,13 +73,14 @@ function Invoke-Api([string]$Method, [string]$Path, [string]$Body = '', [hashtab
     $reader.Close()
     $json = $null
     try { if ($text) { $json = $text | ConvertFrom-Json } } catch { }
-    $out = [pscustomobject]@{ Status = [int]$res.StatusCode; Type = [string]$res.ContentType; Body = $text; Json = $json }
+    $out = [pscustomobject]@{ Status = [int]$res.StatusCode; Type = [string]$res.ContentType; Body = $text; Json = $json; Headers = $res.Headers }
     $res.Close()
     return $out
 }
 
 # Like Invoke-Api for binary bodies and downloads: returns {Status, Type, Disposition, Bytes, Json}.
-function Invoke-Raw([string]$Method, [string]$Path, [byte[]]$Body = $null, [hashtable]$Headers = @{}) {
+# -Chunked sends the body without a Content-Length.
+function Invoke-Raw([string]$Method, [string]$Path, [byte[]]$Body = $null, [hashtable]$Headers = @{}, [switch]$Chunked) {
     $req = [System.Net.HttpWebRequest]::Create("$base$Path")
     $req.Method = $Method
     $req.Timeout = 15000
@@ -87,7 +88,7 @@ function Invoke-Raw([string]$Method, [string]$Path, [byte[]]$Body = $null, [hash
     foreach ($k in $Headers.Keys) { $req.Headers[$k] = $Headers[$k] }
     if ($null -ne $Body) {
         $req.ContentType = 'application/zip'
-        $req.ContentLength = $Body.Length
+        if ($Chunked) { $req.SendChunked = $true } else { $req.ContentLength = $Body.Length }
         $stream = $req.GetRequestStream()
         $stream.Write($Body, 0, $Body.Length)
         $stream.Close()
@@ -157,17 +158,10 @@ try {
     Write-Host 'Page files'
     $r = Invoke-Api GET '/'
     Check 'GET / serves index.html' ($r.Status -eq 200 -and $r.Type -like 'text/html*' -and $r.Body -match 'styles\.css')
-    foreach ($f in 'styles.css', 'content.js', 'app.js', 'timer.js') {
+    foreach ($f in 'styles.css', 'theme.js', 'content.js', 'app.js', 'timer.js') {
         $r = Invoke-Api GET "/$f"
         Check "GET /$f" ($r.Status -eq 200 -and $r.Body.Length -gt 0)
     }
-    # content.js: every meeting type (a "  key: [" line under TYPES) has a starter agenda under AGENDAS.
-    $parts = (Invoke-Api GET '/content.js').Body -split 'const AGENDAS', 2
-    $keys = { param($text) @([regex]::Matches($text, '(?m)^  (\w+):\s*\[') | ForEach-Object { $_.Groups[1].Value } | Sort-Object) }
-    $typesText = ($parts[0] -split 'const TYPES', 2)[1]
-    $typeKeys = & $keys $typesText
-    $agendaKeys = & $keys $parts[1]
-    Check 'every meeting type has an agenda template' ($typeKeys.Count -eq 8 -and ($typeKeys -join ',') -eq ($agendaKeys -join ',')) "(types: $($typeKeys -join ','); agendas: $($agendaKeys -join ','))"
     Check 'missing file -> 404'          ((Invoke-Api GET '/nope.js').Status -eq 404)
     Check 'unknown file type -> 404'     ((Invoke-Api GET '/index.ps1').Status -eq 404)
     Check 'path traversal is refused'    ((Invoke-Api GET '/%2e%2e/MeetingRunSheet.ps1').Status -ne 200)
@@ -183,10 +177,10 @@ try {
     $a = Invoke-Api POST '/api/meetings' (@{
         fields  = @{ title = 'Crash triage'; type = 'triage'; date = '2026-09-20' }
         checks  = @{ 'before:needs-meeting' = $true }
-        agenda  = @(@{ t = 'Decide ship / cut'; m = 15 })
+        agenda  = @(@{ id = 'item1'; t = 'Decide ship / cut'; m = 15; d = 'Cut cloud saves'; n = "Risk too high`nRevisit in M4" })
         attendees = @('QA lead')
         actions = @(
-            @{ id = 'act1'; a = 'Fix save crash'; o = 'Ana'; d = $past; t = 'GAME-1'; done = $false },
+            @{ id = 'act1'; a = 'Fix save crash'; o = 'Ana'; d = $past; t = 'GAME-1'; done = $false; g = 'item1' },
             @{ id = 'act2'; a = 'Already done';  o = 'Bo';  d = $past; t = '';       done = $true },
             @{ id = 'act3'; a = 'Profile load';  o = 'Cy';  d = '';    t = '';       done = $false }
         )
@@ -204,6 +198,8 @@ try {
     Check 'GET one returns the saved meeting' ($r.Status -eq 200 -and $r.Json.fields.title -eq 'Crash triage' -and $r.Json.checks.'before:needs-meeting' -eq $true)
     # Windows PowerShell's JSON cmdlets can collapse one-item lists; the page needs a list back.
     Check 'one-row agenda is saved as a list' ($r.Body -match '"agenda":\s*\[' -and @($r.Json.agenda)[0].m -eq 15) ($r.Body -replace '\s+', ' ')
+    Check 'agenda item keeps its decision and notes' (@($r.Json.agenda)[0].d -eq 'Cut cloud saves' -and @($r.Json.agenda)[0].n -eq "Risk too high`nRevisit in M4")
+    Check 'action keeps its agenda item' (@($r.Json.agenda)[0].id -eq 'item1' -and (@($r.Json.actions) | Where-Object { $_.id -eq 'act1' }).g -eq 'item1')
     Check 'one-name attendees is saved as a list' ($r.Body -match '"attendees":\s*\[\s*"QA lead"') ($r.Body -replace '\s+', ' ')
 
     $r = Invoke-Api PUT "/api/meetings/$idA" (($r.Json | Select-Object fields, checks, actions | ConvertTo-Json -Depth 5) -replace 'Crash triage', 'Crash triage v2')
@@ -220,6 +216,15 @@ try {
     Check 'unknown API path -> 404 JSON'      ((Invoke-Api GET '/api/other').Json.error -eq 'Not found')
     $r = Invoke-Api POST '/api/meetings' 'not json'
     Check 'bad JSON -> 500 with an error'     ($r.Status -eq 500 -and $r.Json.error)
+    Check '500 does not echo the exception'   ($r.Json.error -notmatch 'JSON') "(got $($r.Json.error))"
+    $page = Invoke-Api GET '/'
+    $list = Invoke-Api GET '/api/meetings'
+    Check 'responses forbid framing and sniffing' ($page.Headers['X-Frame-Options'] -eq 'DENY' -and $list.Headers['X-Frame-Options'] -eq 'DENY' -and
+        $page.Headers['X-Content-Type-Options'] -eq 'nosniff' -and $page.Headers['Content-Security-Policy'] -match "default-src 'self'.*frame-ancestors 'none'")
+    # Just over the 5 MB limit, sent chunked so there is no Content-Length to go by.
+    $big = [System.Text.Encoding]::UTF8.GetBytes('{"fields":{"title":"' + ('x' * (5MB + 1024)) + '"}}')
+    $r = Invoke-Raw POST '/api/meetings' $big -Chunked
+    Check 'oversized chunked body -> 413'     ($r.Status -eq 413 -and $r.Json.error -and @((Invoke-Api GET '/api/meetings').Json).Count -eq 1) "(got $($r.Status))"
 
     Write-Host 'Follow-ups and carried actions'
     $savedAtA = (Invoke-Api GET "/api/meetings/$idA").Json.savedAt
@@ -322,6 +327,15 @@ try {
     $r = Invoke-Raw POST '/api/backup' $odd
     Check 'restore skips paths, bad ids and bad files' ($r.Json.added -eq 0 -and $r.Json.invalid -eq 6 -and @(Get-ChildItem -LiteralPath $data).Count -eq 2 -and -not (Test-Path (Join-Path $work 'escape.json'))) "($($r.Json | ConvertTo-Json -Compress))"
 
+    # A meeting file with no "id" inside: later writes must still go to the file it came from.
+    $noId = '20260102-000000-dddddd'
+    $r = Invoke-Raw POST '/api/backup' (New-Zip @{ "$noId.json" = '{"fields":{"title":"No id inside"},"actions":[{"id":"n1","a":"Tick me","o":"","d":"","t":"","done":false}]}' })
+    $t = Invoke-Api PUT "/api/meetings/$noId/actions/n1" '{"done":true}'
+    $m = (Invoke-Api GET "/api/meetings/$noId").Json
+    Check 'ticking in a restored file without an id stays in that file' ($r.Json.added -eq 1 -and $t.Status -eq 200 -and @($m.actions)[0].done -eq $true -and $m.id -eq $noId -and
+        -not (Test-Path (Join-Path $data '.json')) -and @(Get-ChildItem -LiteralPath $data).Count -eq 3) "(files: $((Get-ChildItem -LiteralPath $data).Name -join ', '))"
+    [void](Invoke-Api DELETE "/api/meetings/$noId")
+
     $c = Invoke-Api POST '/api/meetings' (@{
         fields  = @{ title = 'CSV, "quoted"'; type = 'general'; date = '2026-01-01' }
         checks  = @{}
@@ -389,23 +403,32 @@ try {
         $dom = Get-Dom "$base/" 'dom'
         $count = { param($pattern) ([regex]::Matches($dom, $pattern)).Count }
         Check 'checklist renders 12 items'        ((& $count 'id="chk-') -eq 12) "(got $(& $count 'id="chk-'))"
-        Check 'type dropdown has 8 types'         ((& $count '<option value=') -eq 8)
-        Check 'help tooltips are built (7)'       ((& $count 'class="label-row') -eq 7)
+        Check 'type dropdown has 8 types'         ((& $count '<option value="(general|kickoff|planning|triage|playtest|design|milestone|retro)"') -eq 8)
+        Check 'help tooltips are built (6)'       ((& $count 'class="label-row') -eq 6)
         Check 'sidebar lists saved meetings'      ($dom -match 'Crash triage v2')
         Check 'overdue badge shows in the list'   ($dom -match '1 overdue')
         Check 'timer bar is present and hidden'   ($dom -match 'id="timerBar"[^>]*hidden')
         Check 'agenda editor shows one empty row' ((& $count 'id="ag-t-') -eq 1)
+        Check 'agenda item is a wrapping box with a time rail' ($dom -match '<td class="at"[^>]*></td><td class="n">1</td>' -and $dom -match '<textarea id="ag-t-0"[^>]*></textarea><span aria-hidden="true"> </span>')
+        Check 'agenda item has a closed record with an action list' ($dom -match 'class="rec-toggle"[^>]*aria-expanded="false"' -and $dom -match 'id="ag-rec-0"[^>]*hidden' -and $dom -match '<div class="rec-acts"><button class="ghost sm">\+ Add action</button></div>')
+        Check 'the summary is on the page, Other actions and Other decisions are not' ($dom -notmatch 'id="otherActs"' -and $dom -notmatch 'id="f-decisions"' -and $dom -match 'id="summary"><div class="sum-none">Nothing recorded yet\.</div>')
+        Check 'sheet opens on the Plan phase' ($dom -match 'id="sheet" data-phase="plan"' -and $dom -match '<button data-phase="plan" aria-current="true">1 Plan</button>' -and $dom -notmatch '<button data-phase="run" aria-current')
+        Check 'readiness strip is filled in' ($dom -match 'id="rGoal"><b>Goal</b> missing<' -and $dom -notmatch 'class="ready-item ok" id="rAgenda"' -and $dom -match 'id="rPrep"><b>Prep</b> 0 of 2 done<' -and $dom -match 'id="timerBtn"')
+        Check 'checklist phases are tagged for the phase view' ((& $count 'class="phase" data-id="') -eq 3 -and $dom -match 'id="f-goalmet"')
         Check 'attendee list shows one empty row' ((& $count 'id="att-') -eq 1)
+        Check 'parking lot is a list with one empty row' ((& $count 'id="park-') -eq 1 -and $dom -notmatch 'id="f-parking"')
+        Check 'summary ends with the parking lot; no action table' ($dom -match '<div class="sum-head">Parking lot</div><div class="sum-none">Nothing parked\.</div></div></div>' -and $dom -notmatch 'id="actionRows"' -and $dom -notmatch 'Carried over / no agenda item')
         Check 'menu has backup, restore and CSV'  ($dom -match 'id="backupBtn"' -and $dom -match 'id="restoreBtn"' -and $dom -match 'id="csvBtn"')
         Check 'calendar grid has 42 days'         ((& $count 'class="day') -eq 42) "(got $(& $count 'class="day'))"
         Check 'list has Upcoming and Past groups' ($dom -match '<div class="group">Upcoming</div>' -and $dom -match '<div class="group">Past</div>')
         Check 'readiness badges show'             ($dom -match 'class="pill ready">Ready<' -and $dom -match 'class="pill prep">Needs goal, agenda, prep 1/2<')
         Check 'start time field is present'       ($dom -match 'id="f-time"')
-        Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
-        Check 'empty agenda offers the type template' ($dom -match 'id="useTemplate"[^>]*>Use template: General / decision<' -and $dom -notmatch 'id="useTemplate"[^>]*hidden')
-        Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and $dom -match 'id="act-o-0"[^>]*list="ownerList"')
+        Check 'section nav lists 5 sections'     ((& $count 'class="jump-link') -eq 5) "(got $(& $count 'class="jump-link'))"
+        Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and (Invoke-Api GET '/app.js').Body -match 'list="ownerList" aria-label="Owner"')
         Check 'menu has both Copy notes entries'   ($dom -match 'id="copyBtn"' -and $dom -match 'id="copyMdBtn"')
-        Check 'ticket link setup is in the menu'  ($dom -match 'id="ticketBtn"' -and $dom -match 'id="ticketBox"[^>]*hidden' -and $dom -match 'class="ticket-go"[^>]*hidden')
+        Check 'ticket link setup is in the menu'  ($dom -match 'id="ticketBtn"' -and $dom -match 'id="ticketBox"[^>]*hidden')
+        Check 'theme follows the system until one is picked' ($dom -match 'id="themeBtn"[^>]*>Theme: System<' -and $dom -notmatch '<html[^>]*data-theme')
+        Check 'theme list has 7 themes with System ticked' ((& $count 'role="menuitemradio"') -eq 7 -and $dom -match '<button[^>]*aria-checked="true"[^>]*>System</button>' -and (& $count 'aria-checked="true"') -eq 1 -and $dom -match 'id="themeList"[^>]*hidden') "(got $(& $count 'role="menuitemradio"'))"
         Check 'Actions button counts open actions' ($dom -match 'id="actionsCount"[^>]*>4<' -and $dom -match 'id="actionsView"[^>]*hidden')
 
         # The open actions view: /#actions opens it instead of the run sheet.

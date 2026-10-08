@@ -7,16 +7,15 @@
   The section you're in is highlighted. Jumping to a notes box also puts the cursor in it.
 */
 
-// [label, section element, box to focus or null, starts a new group]. Elements are looked up
-// on every use, because renderPhases() rebuilds the checklist.
-// Same order as the page.
+// [label, section element, box to focus or null, starts a new group, phases it shows in]. Elements
+// are looked up on every use, because renderPhases() rebuilds the checklist. A jump to a section
+// that isn't in the current phase (setPhase in app.js) switches to its first phase.
 const NAV_TARGETS = [
-  ["Brief", () => $("#briefH").closest("section"), null, false],
-  ["Agenda", () => $("#agendaRows").closest(".card"), null, false],
-  ["Actions", () => $("#actionRows").closest(".card"), null, true],
-  ["Decisions", () => $("#f-decisions").closest(".card"), "#f-decisions", false],
-  ["Parking lot", () => $("#f-parking").closest(".card"), "#f-parking", false],
-  ["Self-review", () => $("#f-reflect").closest(".card"), "#f-reflect", true],
+  ["Brief", () => $("#briefH").closest("section"), null, false, ["plan"]],
+  ["Agenda", () => $("#agendaRows").closest(".card"), null, false, ["plan", "run"]],
+  ["Parking lot", () => $("#parkingRows").closest(".card"), "#parkingRows input", false, ["run"]],
+  ["Summary", () => $("#summary").closest(".card"), null, true, ["wrap"]],
+  ["Self-review", () => $("#f-reflect").closest(".card"), "#f-reflect", true, ["wrap"]],
 ];
 
 const nav = $("#jumpNav");
@@ -31,7 +30,8 @@ function navOffset() {
 }
 
 function jumpTo(i) {
-  const [, target, focusSel] = NAV_TARGETS[i];
+  const [, target, focusSel, , phases] = NAV_TARGETS[i];
+  if (!phases.includes(phase)) setPhase(phases[0]);
   const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
   // The brief is at the top: go all the way up so the Save / Start meeting toolbar shows too.
   const top = i === 0 ? 0 : target().getBoundingClientRect().top + window.scrollY - navOffset();
@@ -47,6 +47,7 @@ function showCurrent() {
   const line = navOffset() + window.innerHeight / 3;
   let best = 0, bestTop = -Infinity;
   NAV_TARGETS.forEach(([, target], i) => {
+    if (!target().offsetParent) return;   // not in the current phase
     const top = Math.round(target().getBoundingClientRect().top);
     if (top <= line && (top > bestTop || (top === bestTop && i === navPicked))) { best = i; bestTop = top; }
   });

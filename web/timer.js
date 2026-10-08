@@ -1,6 +1,7 @@
 /*
   Meeting timer: a sticky bar that runs the agenda against the clock.
-  Uses $, state and agendaItems() from app.js, and WRAP_UP from content.js.
+  Uses $, state, agendaItems(), agendaFilled(), setRecord() and setPhase() from app.js, and WRAP_UP
+  from content.js. Start meeting moves the sheet to Run, and Wrap up moves it to Wrap up.
   Nothing here is saved to the meeting file.
 
   A running timer survives a page reload: it is kept in localStorage ("runsheet-timer") with the
@@ -62,11 +63,15 @@ function showTimer() {
   timer.tick = setInterval(renderTimer, 1000);
   renderTimer();
   storeTimer();
+  setPhase(timer.wrapUp ? "wrap" : "run");
+  markAgendaNow();
+  openNowRecord();
 }
 
 function stopTimer() {
   clearInterval(timer.tick);
   timer.tick = null;
+  markAgendaNow();
   $("#timerBar").hidden = true;
   $("#timerBtn").hidden = false;
   document.title = PAGE_TITLE;
@@ -108,20 +113,57 @@ function timerMeetingSaved(id) {
 
 // Next item, or Wrap up after the last one.
 function nextItem() {
+  // The item being left closes its record (its decision stays in view under the title).
+  const done = timerRows()[timer.index];
+  if (done) setRecord(done, false);
   if (timer.index < timer.items.length - 1) {
     timer.index++;
     timer.itemStart = Date.now();
   } else {
     timer.wrapUp = true;
+    setPhase("wrap");   // decisions and actions, ready to read back
+    window.scrollTo(0, 0);
   }
   renderTimer();
   storeTimer();
+  markAgendaNow();
+  openNowRecord();
+}
+
+// Shows where the meeting is in the agenda card: the current item gets the class "now", finished
+// ones "past". Rows are matched to the timer's items by position, so nothing is marked once the
+// agenda has a different number of filled-in rows than when the timer started.
+// Also called by showAgendaTimes() in app.js whenever the agenda is redrawn or edited.
+function markAgendaNow() {
+  const rows = timerRows();
+  state.agenda.forEach((row, i) => {
+    const tr = $("#agendaRows").rows[i];
+    if (!tr) return;
+    const at = rows.indexOf(row);
+    tr.classList.toggle("now", at === timer.index && !timer.wrapUp);
+    tr.classList.toggle("past", at >= 0 && (at < timer.index || timer.wrapUp));
+  });
+}
+
+// The agenda rows the timer's items stand for, in order; none if the timer isn't running on the
+// meeting on screen, or its agenda no longer has the same number of filled-in rows.
+function timerRows() {
+  const rows = state.agenda.filter(agendaFilled);
+  const on = !!timer.tick && timer.hasAgenda && timer.meeting === (state.id || UNSAVED) && rows.length === timer.items.length;
+  return on ? rows : [];
+}
+
+// Opens the current item's record (decision + notes), so there is somewhere to type as it is discussed.
+function openNowRecord() {
+  const row = timerRows()[timer.index];
+  if (row && !timer.wrapUp) setRecord(row, true);
 }
 
 function renderTimer() {
   const now = Date.now();
   const meetingSec = (now - timer.start) / 1000;
   const item = timer.items[timer.index];
+  const itemSec = (now - timer.itemStart) / 1000;
   let label, title, time = { text: "", level: "" };
 
   if (timer.wrapUp) {
@@ -131,7 +173,6 @@ function renderTimer() {
   } else {
     label = timer.hasAgenda ? `Now ${timer.index + 1}/${timer.items.length}` : "Now";
     title = item.title;
-    const itemSec = (now - timer.itemStart) / 1000;
     time = item.min ? countdown(item.min * 60 - itemSec, item.min >= 10 ? 300 : 60) : { text: clock(itemSec) + " so far", level: "" };
   }
 
@@ -145,6 +186,31 @@ function renderTimer() {
   const total = $("#tTotal");
   total.textContent = timer.totalMin ? `${clock(meetingSec)} / ${clock(timer.totalMin * 60)}` : clock(meetingSec);
   total.classList.toggle("over", !!timer.totalMin && meetingSec > timer.totalMin * 60);
+
+  // Against the plan: how late (or early) the current item started, if the items before it have minutes.
+  const before = timer.items.slice(0, timer.index);
+  const paced = timer.hasAgenda && !timer.wrapUp && before.length > 0 && before.every(it => it.min);
+  const late = paced ? Math.round((timer.itemStart - timer.start) / 60000 - before.reduce((sum, it) => sum + it.min, 0)) : 0;
+  $("#tPace").textContent = !paced ? "" : late > 0 ? `\u00b7 ${late} min behind plan` : late < 0 ? `\u00b7 ${-late} min ahead of plan` : "\u00b7 on plan";
+
+  // One segment per agenda item, as wide as its minutes: done, the current one filling up, to come.
+  const segs = $("#tSegs");
+  segs.hidden = !timer.hasAgenda;
+  if (timer.hasAgenda) {
+    if (segs.children.length !== timer.items.length) {
+      segs.replaceChildren(...timer.items.map(it => {
+        const seg = document.createElement("i");
+        seg.style.flex = `${it.min || 5} 1 0`;
+        seg.appendChild(document.createElement("b"));
+        return seg;
+      }));
+    }
+    [...segs.children].forEach((seg, k) => {
+      const current = k === timer.index && !timer.wrapUp;
+      seg.classList.toggle("done", timer.wrapUp || k < timer.index);
+      seg.firstChild.style.width = (current ? (item.min ? Math.min(1, itemSec / (item.min * 60)) : 1) * 100 : 0) + "%";
+    });
+  }
 
   const next = $("#tNext");
   next.hidden = !timer.hasAgenda || timer.wrapUp;

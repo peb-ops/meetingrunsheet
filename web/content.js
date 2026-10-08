@@ -1,5 +1,5 @@
 /*
-  Run sheet content: checklist items, meeting-type tips and starter agendas.
+  Run sheet content: checklist items and meeting-type tips.
   Edit freely, then refresh the browser. No server restart needed.
 
   Checklist items: [id, title, description]. Saved meetings store ticks as "<phase id>:<item id>"
@@ -48,60 +48,4 @@ const TYPES = {
   design:    ["Tech design review", "Pre-read is mandatory. Review risks, alternatives and cost, not code style. Leave with approve, approve with changes, or rework."],
   milestone: ["Milestone review / go-no-go", "Go through criteria against evidence (builds, perf numbers, bug counts). Name the risks out loud. Record the go/no-go and its conditions."],
   retro:     ["Retrospective", "Make it safe: no blame, no leads dominating. Collect silently first, then group and vote. Leave with 1-3 concrete changes, each with an owner."],
-};
-
-// Starter agendas: TYPES key -> rows of [item, minutes]. Offered as "Use template" while a meeting's
-// agenda is empty; the rows are copied into the meeting, so editing these never changes saved meetings.
-// If the meeting has no timebox yet, it is set to the template's total.
-const AGENDAS = {
-  general: [
-    ["Context and the decision needed", 5],
-    ["Options and trade-offs", 15],
-    ["Make the call", 5],
-    ["Actions and owners", 5],
-  ],
-  kickoff: [
-    ["Goal and why now", 10],
-    ["Scope: what's in, what's out", 15],
-    ["Owners and definition of done", 15],
-    ["Risks and unknowns", 10],
-    ["How progress gets reported, next steps", 10],
-  ],
-  planning: [
-    ["Carried over from last sprint", 10],
-    ["Capacity and time off", 5],
-    ["Priorities for this sprint", 10],
-    ["Walk the backlog and commit", 25],
-    ["Dependencies and risks", 10],
-  ],
-  triage: [
-    ["New bugs since last triage", 15],
-    ["Reopened and escalated bugs", 10],
-    ["Read back owners and target milestones", 5],
-  ],
-  playtest: [
-    ["What players did", 15],
-    ["What players said", 10],
-    ["Rank the issues", 15],
-    ["Owners and the next playtest", 5],
-  ],
-  design: [
-    ["Questions on the pre-read", 10],
-    ["Risks and alternatives", 20],
-    ["Cost and schedule", 10],
-    ["Call it: approve, approve with changes, or rework", 5],
-  ],
-  milestone: [
-    ["Criteria against evidence", 25],
-    ["Open risks", 15],
-    ["Go / no-go and its conditions", 10],
-    ["Actions and owners", 10],
-  ],
-  retro: [
-    ["Check-in and last retro's actions", 10],
-    ["Collect silently", 10],
-    ["Group and vote", 15],
-    ["Discuss the top items", 15],
-    ["Pick 1-3 changes, each with an owner", 10],
-  ],
 };

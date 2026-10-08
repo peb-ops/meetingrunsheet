@@ -35,12 +35,12 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
 
 - **Brief:** title, goal ("we leave this meeting with..."), meeting type with tips, date, timebox,
   note-taker and attendees.
-- **Agenda:** items with minutes, checked against the timebox. Press Enter to add the next item,
-  or start an empty agenda from the template for the meeting type.
+- **Agenda:** items with minutes, checked against the timebox. Press Enter to add the next item.
 - **Meeting timer:** counts down each agenda item, turns amber near the end and red when over,
   shows the time left in the browser tab, and keeps running if the page is reloaded.
-- **Record:** action items (owner, due date, ticket; missing owners/dates and overdue dates are
-  flagged; the Owner box suggests the attendees), decisions, parking lot, and a short self-review.
+- **Record:** under each agenda item, its decision, notes and action items (owner and due date;
+  missing ones and overdue dates are flagged; the Owner box suggests the attendees), plus a parking
+  lot list. Wrap up shows it all as one summary, with a short self-review.
 - **Facilitation checklist:** before, during and after the meeting.
 - **Library:** every saved meeting in a searchable sidebar, with open and overdue action counts.
 - **Open actions:** the Actions button lists every open action from every meeting, grouped by
@@ -57,7 +57,8 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
   Excel or a tracker import.
 
 Unsaved work is kept as a draft in the browser and offered back if the page closes unexpectedly.
-Light and dark themes follow your system setting.
+Light and dark themes follow your system setting; Theme in the ... menu picks one for this browser
+(Light, Dark, Paper, Sky, Midnight or Forest).
 
 ## Your data
 
@@ -69,7 +70,7 @@ your machine. Use **Download backup** from the ... menu to make a copy.
 The page files are in `web\` and are read from disk on every request, so edits only need a
 browser refresh:
 
-- `web\content.js` - checklist items, meeting-type tips and agenda templates
+- `web\content.js` - checklist items and meeting-type tips
 - `web\styles.css` - colours and layout (theme colours are at the top)
 
 ## Project layout

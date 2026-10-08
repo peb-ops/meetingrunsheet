@@ -80,6 +80,7 @@ class MeetingStore {
         $meeting = $this.Read($id)
         [System.IO.File]::Delete($this.PathOf($id))
         # Treat it as a follow-up with no actions, so everything carried to it is released.
+        $meeting | Add-Member -NotePropertyName id      -NotePropertyValue $id -Force
         $meeting | Add-Member -NotePropertyName actions -NotePropertyValue @() -Force
         $this.SyncCarried($meeting)
     }
@@ -157,7 +158,8 @@ class MeetingStore {
 
     # Adds the meetings in a backup zip. Never overwrites: an id that is already here is skipped.
     # Only top-level "<id>.json" entries with a valid id and a readable meeting are used, and entry
-    # names are only ever matched against the id pattern, never used as paths.
+    # names are only ever matched against the id pattern, never used as paths. An entry over 5 MB
+    # is invalid, and so is anything past 500 MB of restored text in one call.
     # Returns {added, skipped, invalid}, or $null if the bytes aren't a zip.
     [object] RestoreZip([byte[]] $bytes) {
         Add-Type -AssemblyName System.IO.Compression
@@ -169,6 +171,8 @@ class MeetingStore {
             return $null
         }
         $added = 0; $skipped = 0; $invalid = 0
+        $budget = 500MB   # text restored in one go, so a small zip can't unpack into a full disk
+        $chunk = New-Object char[] 65536
         try {
             foreach ($entry in $zip.Entries) {
                 if (-not $entry.Name) { continue }   # a folder
@@ -177,9 +181,18 @@ class MeetingStore {
                 $id = $m.Groups[1].Value
                 if ($this.Exists($id)) { $skipped++; continue }
 
-                $text = ''   # 5.1 classes reject a variable that is only assigned inside try
+                # Read with our own limit: the size a zip states for an entry can be a lie.
+                $sb = New-Object System.Text.StringBuilder
+                $n = 0   # 5.1 classes reject a variable that is only assigned inside try
                 $reader = New-Object System.IO.StreamReader($entry.Open(), $this.Utf8)
-                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+                try {
+                    while ($sb.Length -le 5MB -and ($n = $reader.Read($chunk, 0, $chunk.Length)) -gt 0) {
+                        [void]$sb.Append($chunk, 0, $n)
+                    }
+                } finally { $reader.Dispose() }
+                if ($sb.Length -gt 5MB -or $sb.Length -gt $budget) { $invalid++; continue }
+                $budget -= $sb.Length
+                $text = $sb.ToString()
                 $meeting = $null
                 try { $meeting = $text | ConvertFrom-Json } catch { }
                 if (-not $meeting -or -not $meeting.fields -or ($meeting.id -and [string]$meeting.id -ne $id)) { $invalid++; continue }
@@ -260,7 +273,7 @@ class MeetingStore {
         $action = @($meeting.actions | Where-Object { $_.id -and [string]$_.id -eq $actionId }) | Select-Object -First 1
         if (-not $action) { return $false }
         $action | Add-Member -NotePropertyName done -NotePropertyValue $done -Force
-        $this.Write($meeting)
+        $this.Write($id, $meeting)
         return $true
     }
 
@@ -272,12 +285,15 @@ class MeetingStore {
         $meeting = $json | ConvertFrom-Json
         $meeting | Add-Member -NotePropertyName id      -NotePropertyValue $id -Force
         $meeting | Add-Member -NotePropertyName savedAt -NotePropertyValue ((Get-Date).ToString('s')) -Force
-        $this.Write($meeting)
+        $this.Write($id, $meeting)
         return $meeting
     }
 
-    hidden [void] Write([object] $meeting) {
-        $path = $this.PathOf($meeting.id)
+    # The file is always named after $id, never after the "id" inside the meeting: a restored or
+    # hand-copied file can have none, or one that names another meeting.
+    hidden [void] Write([string] $id, [object] $meeting) {
+        $meeting | Add-Member -NotePropertyName id -NotePropertyValue $id -Force
+        $path = $this.PathOf($id)
         $tmp  = "$path.tmp"
         [System.IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject $meeting -Depth 10), $this.Utf8)
         Move-Item -LiteralPath $tmp -Destination $path -Force -ErrorAction Stop
@@ -304,6 +320,6 @@ class MeetingStore {
                 $changed = $true
             }
         }
-        if ($changed) { $this.Write($original) }
+        if ($changed) { $this.Write($fromId, $original) }
     }
 }
