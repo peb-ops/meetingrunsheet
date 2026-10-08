@@ -140,6 +140,7 @@ function Get-Summary([string]$Id) {
 
 $hostExe = (Get-Process -Id $PID).Path
 $serverArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$appDir\MeetingRunSheet.ps1`" -Port $Port -DataDir `"$data`" -NoBrowser"
+$server2 = $null   # a second server for the page interaction checks, started further down
 $server = Start-Process -FilePath $hostExe -ArgumentList $serverArgs -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $work 'server.out') -RedirectStandardError (Join-Path $work 'server.err')
 
@@ -170,7 +171,6 @@ try {
     Write-Host 'API basics'
     $r = Invoke-Api GET '/api/meetings'
     Check 'empty list is []' ($r.Status -eq 200 -and $r.Body -eq '[]')
-    Check 'no open actions is []' ((Invoke-Api GET '/api/actions').Body -eq '[]')
 
     $today = (Get-Date).ToString('yyyy-MM-dd')
     $past  = (Get-Date).AddDays(-3).ToString('yyyy-MM-dd')
@@ -191,8 +191,7 @@ try {
     $r = Invoke-Api GET '/api/meetings'
     Check 'one-item list is still an array' ($r.Body.StartsWith('[') -and @($r.Json).Count -eq 1)
     $s = Get-Summary $idA
-    Check 'openActions counts open actions' ($s.openActions -eq 2) "(got $($s.openActions))"
-    Check 'overdueActions counts past-due open actions' ($s.overdueActions -eq 1) "(got $($s.overdueActions))"
+    Check 'summary has no action counts' ($s.title -eq 'Crash triage' -and $r.Body -notmatch 'openActions|overdueActions')
 
     $r = Invoke-Api GET "/api/meetings/$idA"
     Check 'GET one returns the saved meeting' ($r.Status -eq 200 -and $r.Json.fields.title -eq 'Crash triage' -and $r.Json.checks.'before:needs-meeting' -eq $true)
@@ -200,10 +199,20 @@ try {
     Check 'one-row agenda is saved as a list' ($r.Body -match '"agenda":\s*\[' -and @($r.Json.agenda)[0].m -eq 15) ($r.Body -replace '\s+', ' ')
     Check 'agenda item keeps its decision and notes' (@($r.Json.agenda)[0].d -eq 'Cut cloud saves' -and @($r.Json.agenda)[0].n -eq "Risk too high`nRevisit in M4")
     Check 'action keeps its agenda item' (@($r.Json.agenda)[0].id -eq 'item1' -and (@($r.Json.actions) | Where-Object { $_.id -eq 'act1' }).g -eq 'item1')
+    # The page no longer edits these, but a save must not drop them from older files.
+    $byId = @{}; foreach ($x in $r.Json.actions) { $byId[$x.id] = $x }
+    Check 'older action fields (due, ticket, done) are kept' ($byId['act1'].d -eq $past -and $byId['act1'].t -eq 'GAME-1' -and $byId['act2'].done -eq $true)
     Check 'one-name attendees is saved as a list' ($r.Body -match '"attendees":\s*\[\s*"QA lead"') ($r.Body -replace '\s+', ' ')
 
     $r = Invoke-Api PUT "/api/meetings/$idA" (($r.Json | Select-Object fields, checks, actions | ConvertTo-Json -Depth 5) -replace 'Crash triage', 'Crash triage v2')
     Check 'PUT updates and keeps the id' ($r.Status -eq 200 -and $r.Json.id -eq $idA -and $r.Json.fields.title -eq 'Crash triage v2')
+
+    # The page sends the savedAt it opened the meeting with; a save over a newer version is refused.
+    $r = Invoke-Api PUT "/api/meetings/$idA" '{"savedAt":"2020-01-01T00:00:00.000","fields":{"title":"Out of date"},"checks":{},"actions":[]}'
+    $cur = (Invoke-Api GET "/api/meetings/$idA").Json
+    Check 'PUT with an out-of-date savedAt -> 409, nothing written' ($r.Status -eq 409 -and $r.Json.error -and $cur.fields.title -eq 'Crash triage v2')
+    $r = Invoke-Api PUT "/api/meetings/$idA" ($cur | ConvertTo-Json -Depth 5)
+    Check 'PUT with the current savedAt saves' ($r.Status -eq 200 -and $r.Json.savedAt -and @((Invoke-Api GET "/api/meetings/$idA").Json.actions).Count -eq 3) "(got $($r.Status))"
 
     Check 'search is case-insensitive'   (@((Invoke-Api GET '/api/meetings?q=CRASH%20TRIAGE').Json).Count -eq 1)
     Check 'search with no match is []'   ((Invoke-Api GET '/api/meetings?q=zzzz').Body -eq '[]')
@@ -214,6 +223,8 @@ try {
     Check 'unknown id -> 404'                 ((Invoke-Api GET '/api/meetings/does-not-exist').Status -eq 404)
     Check 'invalid id -> 404'                 ((Invoke-Api GET '/api/meetings/bad_id!').Status -eq 404)
     Check 'unknown API path -> 404 JSON'      ((Invoke-Api GET '/api/other').Json.error -eq 'Not found')
+    Check 'removed action routes -> 404'      ((Invoke-Api GET '/api/actions').Status -eq 404 -and (Invoke-Api GET '/api/actions.csv').Status -eq 404 -and
+        (Invoke-Api PUT "/api/meetings/$idA/actions/act1" '{"done":true}').Status -eq 404)
     $r = Invoke-Api POST '/api/meetings' 'not json'
     Check 'bad JSON -> 500 with an error'     ($r.Status -eq 500 -and $r.Json.error)
     Check '500 does not echo the exception'   ($r.Json.error -notmatch 'JSON') "(got $($r.Json.error))"
@@ -226,42 +237,22 @@ try {
     $r = Invoke-Raw POST '/api/meetings' $big -Chunked
     Check 'oversized chunked body -> 413'     ($r.Status -eq 413 -and $r.Json.error -and @((Invoke-Api GET '/api/meetings').Json).Count -eq 1) "(got $($r.Status))"
 
-    Write-Host 'Follow-ups and carried actions'
-    $savedAtA = (Invoke-Api GET "/api/meetings/$idA").Json.savedAt
+    Write-Host 'Follow-ups'
+    # A follow-up only links back: saving or deleting it never changes the meeting it follows.
+    $fileA = [System.IO.File]::ReadAllText((Join-Path $data "$idA.json"))
     $b = Invoke-Api POST '/api/meetings' (@{
         follows = $idA
         fields  = @{ title = 'Crash triage v2'; type = 'triage'; date = $today }
         checks  = @{}
-        actions = @(
-            @{ id = 'act1'; a = 'Fix save crash'; o = 'Ana'; d = $past; t = 'GAME-1'; done = $false },
-            @{ id = 'act3'; a = 'Profile load';  o = 'Cy';  d = '';    t = '';       done = $false }
-        )
+        actions = @(@{ id = 'act1'; a = 'Fix save crash'; o = 'Ana' })
     } | ConvertTo-Json -Depth 5)
     $idB = $b.Json.id
     Check 'follow-up saves with follows' ($b.Status -eq 201 -and $b.Json.follows -eq $idA)
-    $origA = (Invoke-Api GET "/api/meetings/$idA").Json
-    $byId = @{}; foreach ($x in $origA.actions) { $byId[$x.id] = $x }
-    Check 'carried actions are marked in the original' ($byId['act1'].carried -eq $idB -and $byId['act3'].carried -eq $idB)
-    Check 'done actions are not marked carried' (-not $byId['act2'].carried)
-    Check 'marking carried keeps the original savedAt' ($origA.savedAt -eq $savedAtA)
-    Check 'carried actions stop counting as open' ((Get-Summary $idA).openActions -eq 0 -and (Get-Summary $idA).overdueActions -eq 0)
-    Check 'follow-up counts them instead' ((Get-Summary $idB).openActions -eq 2)
-
-    $r = Invoke-Api PUT "/api/meetings/$idB" (@{
-        follows = $idA
-        fields  = @{ title = 'Crash triage v2'; type = 'triage'; date = $today }
-        checks  = @{}
-        actions = @(@{ id = 'act1'; a = 'Fix save crash'; o = 'Ana'; d = $past; t = 'GAME-1'; done = $false })
-    } | ConvertTo-Json -Depth 5)
-    $byId = @{}; foreach ($x in (Invoke-Api GET "/api/meetings/$idA").Json.actions) { $byId[$x.id] = $x }
-    Check 'removing an action from the follow-up releases it' ($r.Status -eq 200 -and -not $byId['act3'].carried -and $byId['act1'].carried -eq $idB)
-
+    Check 'saving a follow-up leaves the original untouched' ([System.IO.File]::ReadAllText((Join-Path $data "$idA.json")) -eq $fileA)
     $r = Invoke-Api DELETE "/api/meetings/$idB"
-    $byId = @{}; foreach ($x in (Invoke-Api GET "/api/meetings/$idA").Json.actions) { $byId[$x.id] = $x }
-    Check 'deleting the follow-up releases everything' ($r.Json.deleted -eq $idB -and -not $byId['act1'].carried -and -not $byId['act3'].carried)
+    Check 'deleting a follow-up leaves the original untouched' ($r.Json.deleted -eq $idB -and [System.IO.File]::ReadAllText((Join-Path $data "$idA.json")) -eq $fileA)
     Check 'deleted meeting is gone' ((Invoke-Api GET "/api/meetings/$idB").Status -eq 404)
-    Check 'original counts them as open again' ((Get-Summary $idA).openActions -eq 2)
-
+    Check 'its file is kept in the deleted folder' ((Test-Path (Join-Path $data "deleted\$idB.json")) -and -not (Test-Path (Join-Path $data "$idB.json")))
     $r = Invoke-Api POST '/api/meetings' '{"follows":"no-such-meeting","fields":{"title":"x"},"checks":{},"actions":[]}'
     Check 'follows pointing nowhere is harmless' ($r.Status -eq 201)
     [void](Invoke-Api DELETE "/api/meetings/$($r.Json.id)")
@@ -269,35 +260,13 @@ try {
     Write-Host 'Files on disk'
     $legacy = '{"fields":{"title":"Old v1.0 meeting","type":"standup","date":"2026-01-05"},"checks":{"before-0":true},"actions":[{"a":"old","o":"x","d":"","t":"","done":false}],"id":"20260105-090000-abcdef","savedAt":"2026-01-05T09:00:00"}'
     [System.IO.File]::WriteAllText((Join-Path $data '20260105-090000-abcdef.json'), $legacy, (New-Object System.Text.UTF8Encoding($false)))
-    Check 'v1.0 file (no action ids) lists and opens' ((Get-Summary '20260105-090000-abcdef').openActions -eq 1 -and (Invoke-Api GET '/api/meetings/20260105-090000-abcdef').Status -eq 200)
+    Check 'v1.0 file (no action ids) lists and opens' ((Get-Summary '20260105-090000-abcdef').title -eq 'Old v1.0 meeting' -and (Invoke-Api GET '/api/meetings/20260105-090000-abcdef').Status -eq 200)
     $files = @(Get-ChildItem -LiteralPath $data)
     Check 'no .tmp files left behind' (-not ($files | Where-Object { $_.Extension -eq '.tmp' }))
     $bytes = [System.IO.File]::ReadAllBytes((Join-Path $data "$idA.json"))
     Check 'saved files have no BOM' (-not ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF))
 
-    Write-Host 'Open actions across meetings'
-    $r = Invoke-Api GET '/api/actions'
-    $acts = @($r.Json)
-    $fix = $acts | Where-Object { $_.id -eq 'act1' }
-    Check 'GET /api/actions lists open actions only' ($r.Status -eq 200 -and $acts.Count -eq 3 -and -not ($acts | Where-Object { $_.a -eq 'Already done' })) "(got $($acts.Count))"
-    Check 'each action names its meeting' ($fix.meetingId -eq $idA -and $fix.meeting -eq 'Crash triage v2' -and $fix.meetingDate -eq '2026-09-20' -and $fix.o -eq 'Ana' -and $fix.d -eq $past -and $fix.t -eq 'GAME-1')
-    Check 'soonest due first, no due date last' ($acts[0].id -eq 'act1' -and -not $acts[1].d -and -not $acts[2].d)
-    Check 'an action from before ids has an empty id' (($acts | Where-Object { $_.a -eq 'old' }).id -eq '')
-
-    $savedAtA = (Invoke-Api GET "/api/meetings/$idA").Json.savedAt
-    $r = Invoke-Api PUT "/api/meetings/$idA/actions/act3" '{"done":true}'
-    $after = (Invoke-Api GET "/api/meetings/$idA").Json
-    $byId = @{}; foreach ($x in $after.actions) { $byId[$x.id] = $x }
-    Check 'PUT action done ticks just that action' ($r.Status -eq 200 -and $r.Json.done -eq $true -and $byId['act3'].done -eq $true -and $byId['act1'].done -eq $false -and @($after.actions).Count -eq 3 -and $after.fields.title -eq 'Crash triage v2')
-    Check 'ticking an action keeps savedAt' ($after.savedAt -eq $savedAtA)
-    Check 'a ticked action leaves the open list' (@((Invoke-Api GET '/api/actions').Json).Count -eq 2 -and (Get-Summary $idA).openActions -eq 1)
-    $r = Invoke-Api PUT "/api/meetings/$idA/actions/act3" '{"done":false}'
-    Check 'unticking puts it back' ($r.Json.done -eq $false -and (Get-Summary $idA).openActions -eq 2)
-    Check 'unknown action -> 404'  ((Invoke-Api PUT "/api/meetings/$idA/actions/nope" '{"done":true}').Status -eq 404)
-    Check 'action in an unknown meeting -> 404' ((Invoke-Api PUT '/api/meetings/does-not-exist/actions/act1' '{"done":true}').Status -eq 404)
-    Check 'tick without X-Run-Sheet -> 403' ((Invoke-Api PUT "/api/meetings/$idA/actions/act1" '{"done":true}' @{ 'X-Run-Sheet' = '0' }).Status -eq 403)
-
-    Write-Host 'Backup, restore and CSV'
+    Write-Host 'Backup and restore'
     $r = Invoke-Raw GET '/api/backup'
     $names = @(); try { $names = Get-ZipNames $r.Bytes } catch { }
     Check 'backup is a zip download' ($r.Status -eq 200 -and $r.Type -eq 'application/zip' -and $r.Disposition -match 'attachment; filename="meetings-backup-[0-9-]+\.zip"') "($($r.Status) $($r.Type) $($r.Disposition))"
@@ -325,30 +294,26 @@ try {
         'notes.txt'                       = 'hello'
     }
     $r = Invoke-Raw POST '/api/backup' $odd
-    Check 'restore skips paths, bad ids and bad files' ($r.Json.added -eq 0 -and $r.Json.invalid -eq 6 -and @(Get-ChildItem -LiteralPath $data).Count -eq 2 -and -not (Test-Path (Join-Path $work 'escape.json'))) "($($r.Json | ConvertTo-Json -Compress))"
+    Check 'restore skips paths, bad ids and bad files' ($r.Json.added -eq 0 -and $r.Json.invalid -eq 6 -and @(Get-ChildItem -LiteralPath $data -File).Count -eq 2 -and -not (Test-Path (Join-Path $work 'escape.json'))) "($($r.Json | ConvertTo-Json -Compress))"
 
     # A meeting file with no "id" inside: later writes must still go to the file it came from.
     $noId = '20260102-000000-dddddd'
     $r = Invoke-Raw POST '/api/backup' (New-Zip @{ "$noId.json" = '{"fields":{"title":"No id inside"},"actions":[{"id":"n1","a":"Tick me","o":"","d":"","t":"","done":false}]}' })
-    $t = Invoke-Api PUT "/api/meetings/$noId/actions/n1" '{"done":true}'
+    $t = Invoke-Api PUT "/api/meetings/$noId" '{"fields":{"title":"No id inside, saved"},"checks":{},"actions":[]}'
     $m = (Invoke-Api GET "/api/meetings/$noId").Json
-    Check 'ticking in a restored file without an id stays in that file' ($r.Json.added -eq 1 -and $t.Status -eq 200 -and @($m.actions)[0].done -eq $true -and $m.id -eq $noId -and
-        -not (Test-Path (Join-Path $data '.json')) -and @(Get-ChildItem -LiteralPath $data).Count -eq 3) "(files: $((Get-ChildItem -LiteralPath $data).Name -join ', '))"
+    Check 'saving a restored file without an id stays in that file' ($r.Json.added -eq 1 -and $t.Status -eq 200 -and $m.fields.title -eq 'No id inside, saved' -and $m.id -eq $noId -and
+        -not (Test-Path (Join-Path $data '.json')) -and @(Get-ChildItem -LiteralPath $data -File).Count -eq 3) "(files: $((Get-ChildItem -LiteralPath $data -File).Name -join ', '))"
     [void](Invoke-Api DELETE "/api/meetings/$noId")
 
-    $c = Invoke-Api POST '/api/meetings' (@{
-        fields  = @{ title = 'CSV, "quoted"'; type = 'general'; date = '2026-01-01' }
-        checks  = @{}
-        actions = @(@{ id = 'x1'; a = '=HYPERLINK("x")'; o = 'Bo'; d = ''; t = ''; done = $false })
-    } | ConvertTo-Json -Depth 5)
-    $r = Invoke-Raw GET '/api/actions.csv'
-    Check 'actions CSV is a download with a BOM' ($r.Status -eq 200 -and $r.Type -like 'text/csv*' -and $r.Disposition -match 'attachment; filename="meeting-actions-' -and $r.Bytes[0] -eq 0xEF)
-    $rows = @([System.Text.Encoding]::UTF8.GetString($r.Bytes).TrimStart([char]0xFEFF) -split "`r`n" | Where-Object { $_ } | ConvertFrom-Csv)
-    $fix = $rows | Where-Object { $_.Action -eq 'Fix save crash' }
-    Check 'CSV lists every action with its status' ($rows.Count -eq 5 -and $fix.Status -eq 'overdue' -and $fix.Owner -eq 'Ana' -and $fix.Ticket -eq 'GAME-1' -and $fix.Meeting -eq 'Crash triage v2' -and ($rows | Where-Object { $_.Action -eq 'Already done' }).Status -eq 'done') "(got $($rows.Count) rows)"
-    $odd = $rows | Where-Object { $_.'Meeting id' -eq $c.Json.id }
-    Check 'CSV quotes text and defuses formulas' ($odd.Meeting -eq 'CSV, "quoted"' -and $odd.Action -eq "'=HYPERLINK(`"x`")") "(got $($odd.Meeting) / $($odd.Action))"
-    [void](Invoke-Api DELETE "/api/meetings/$($c.Json.id)")
+    Write-Host 'Page settings'
+    Check 'no settings stored is {}' ((Invoke-Api GET '/api/settings').Body -eq '{}')
+    Check 'settings without X-Run-Sheet -> 403' ((Invoke-Api PUT '/api/settings' '{"theme":"dark"}' @{ 'X-Run-Sheet' = '0' }).Status -eq 403)
+    $r = Invoke-Api PUT '/api/settings' '{"theme":"dark","sideOff":true,"other":"x"}'
+    $s = Invoke-Api GET '/api/settings'
+    Check 'settings are stored, known keys only' ($r.Status -eq 200 -and $s.Json.theme -eq 'dark' -and $s.Json.sideOff -eq $true -and $s.Body -notmatch 'other') "(got $($s.Body))"
+    $r = Invoke-Api PUT '/api/settings' '{"theme":"../x","sideOff":"yes"}'
+    Check 'a bad theme or sidebar value is stored as the default' ($r.Json.theme -eq '' -and $r.Json.sideOff -eq $false) "(got $($r.Body))"
+    Check 'the settings file is not taken for a meeting' (@((Invoke-Api GET '/api/meetings').Json).Count -eq 2 -and (Test-Path (Join-Path $data 'settings\page.json')))
 
     Write-Host 'Calendar and readiness'
     # Two meetings on the same day next week: one prepared, one not. They stay for the page checks.
@@ -384,9 +349,9 @@ try {
     } else {
         Write-Host 'Page render (headless Edge)'
         # The page's HTML after its scripts have run.
-        function Get-Dom([string]$Url, [string]$Name) {
+        function Get-Dom([string]$Url, [string]$Name, [int]$Budget = 4000) {
             $domFile = Join-Path $work "$Name.html"
-            $edgeArgs = "--headless --disable-gpu --no-first-run --user-data-dir=`"$work\edge-$Name`" --virtual-time-budget=4000 --dump-dom $Url"
+            $edgeArgs = "--headless --disable-gpu --no-first-run --user-data-dir=`"$work\edge-$Name`" --virtual-time-budget=$Budget --dump-dom $Url"
             $p = Start-Process -FilePath $edge -ArgumentList $edgeArgs -RedirectStandardOutput $domFile -PassThru -WindowStyle Hidden
             if (-not $p.WaitForExit(45000)) { try { $p.Kill() } catch { } }
             # Edge's helper processes can keep the output file open, so read it shared, then stop them.
@@ -404,41 +369,78 @@ try {
         $count = { param($pattern) ([regex]::Matches($dom, $pattern)).Count }
         Check 'checklist renders 12 items'        ((& $count 'id="chk-') -eq 12) "(got $(& $count 'id="chk-'))"
         Check 'type dropdown has 8 types'         ((& $count '<option value="(general|kickoff|planning|triage|playtest|design|milestone|retro)"') -eq 8)
-        Check 'help tooltips are built (6)'       ((& $count 'class="label-row') -eq 6)
+        Check 'help tooltips are built (7)'       ((& $count 'class="label-row') -eq 7)
         Check 'sidebar lists saved meetings'      ($dom -match 'Crash triage v2')
-        Check 'overdue badge shows in the list'   ($dom -match '1 overdue')
+        Check 'list has no action badges'         ($dom -notmatch 'class="pill (open|overdue)"' -and $dom -notmatch '\d+ (open|overdue)<')
         Check 'timer bar is present and hidden'   ($dom -match 'id="timerBar"[^>]*hidden')
         Check 'agenda editor shows one empty row' ((& $count 'id="ag-t-') -eq 1)
         Check 'agenda item is a wrapping box with a time rail' ($dom -match '<td class="at"[^>]*></td><td class="n">1</td>' -and $dom -match '<textarea id="ag-t-0"[^>]*></textarea><span aria-hidden="true"> </span>')
         Check 'agenda item has a closed record with an action list' ($dom -match 'class="rec-toggle"[^>]*aria-expanded="false"' -and $dom -match 'id="ag-rec-0"[^>]*hidden' -and $dom -match '<div class="rec-acts"><button class="ghost sm">\+ Add action</button></div>')
-        Check 'the summary is on the page, Other actions and Other decisions are not' ($dom -notmatch 'id="otherActs"' -and $dom -notmatch 'id="f-decisions"' -and $dom -match 'id="summary"><div class="sum-none">Nothing recorded yet\.</div>')
+        Check 'the summary is on the page' ($dom -match 'id="summary"><div class="sum-none">Nothing recorded yet\.</div>')
+        Check 'other decisions is a list with one empty row' ((& $count 'id="dec-') -eq 1 -and $dom -notmatch 'id="f-decisions"')
+        Check 'an agenda item can be marked left open' ($dom -match '<input type="checkbox" id="ag-o-0">')
+        Check 'loose actions, Last time and Repeat weekly start hidden' ($dom -match 'id="looseActs"[^>]*hidden' -and $dom -match 'id="lastTime"[^>]*hidden' -and $dom -match 'id="repeatBox"[^>]*hidden' -and $dom -match 'id="repeatBtn"')
+        Check 'Wrap up has a print button and a print heading' ($dom -match 'id="printBtn"' -and $dom -match 'id="printHead"><h1>Meeting notes</h1>')
         Check 'sheet opens on the Plan phase' ($dom -match 'id="sheet" data-phase="plan"' -and $dom -match '<button data-phase="plan" aria-current="true">1 Plan</button>' -and $dom -notmatch '<button data-phase="run" aria-current')
         Check 'readiness strip is filled in' ($dom -match 'id="rGoal"><b>Goal</b> missing<' -and $dom -notmatch 'class="ready-item ok" id="rAgenda"' -and $dom -match 'id="rPrep"><b>Prep</b> 0 of 2 done<' -and $dom -match 'id="timerBtn"')
         Check 'checklist phases are tagged for the phase view' ((& $count 'class="phase" data-id="') -eq 3 -and $dom -match 'id="f-goalmet"')
         Check 'attendee list shows one empty row' ((& $count 'id="att-') -eq 1)
         Check 'parking lot is a list with one empty row' ((& $count 'id="park-') -eq 1 -and $dom -notmatch 'id="f-parking"')
         Check 'summary ends with the parking lot; no action table' ($dom -match '<div class="sum-head">Parking lot</div><div class="sum-none">Nothing parked\.</div></div></div>' -and $dom -notmatch 'id="actionRows"' -and $dom -notmatch 'Carried over / no agenda item')
-        Check 'menu has backup, restore and CSV'  ($dom -match 'id="backupBtn"' -and $dom -match 'id="restoreBtn"' -and $dom -match 'id="csvBtn"')
+        Check 'menu has backup and restore'       ($dom -match 'id="backupBtn"' -and $dom -match 'id="restoreBtn"')
+        Check 'no action tracking on the page'    ($dom -notmatch 'id="(csvBtn|ticketBtn|ticketBox|actionsBtn|actionsView)"')
         Check 'calendar grid has 42 days'         ((& $count 'class="day') -eq 42) "(got $(& $count 'class="day'))"
         Check 'list has Upcoming and Past groups' ($dom -match '<div class="group">Upcoming</div>' -and $dom -match '<div class="group">Past</div>')
         Check 'readiness badges show'             ($dom -match 'class="pill ready">Ready<' -and $dom -match 'class="pill prep">Needs goal, agenda, prep 1/2<')
         Check 'start time field is present'       ($dom -match 'id="f-time"')
-        Check 'section nav lists 5 sections'     ((& $count 'class="jump-link') -eq 5) "(got $(& $count 'class="jump-link'))"
-        Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and (Invoke-Api GET '/app.js').Body -match 'list="ownerList" aria-label="Owner"')
+        Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
+        $appJs = (Invoke-Api GET '/app.js').Body
+        Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and $appJs -match 'list="ownerList" aria-label="Owner"')
+        Check 'an action line has no due date box' ($appJs -notmatch 'aria-label="Due"' -and $appJs -notmatch 'type="date" aria-label')
         Check 'menu has both Copy notes entries'   ($dom -match 'id="copyBtn"' -and $dom -match 'id="copyMdBtn"')
-        Check 'ticket link setup is in the menu'  ($dom -match 'id="ticketBtn"' -and $dom -match 'id="ticketBox"[^>]*hidden')
         Check 'theme follows the system until one is picked' ($dom -match 'id="themeBtn"[^>]*>Theme: System<' -and $dom -notmatch '<html[^>]*data-theme')
         Check 'theme list has 7 themes with System ticked' ((& $count 'role="menuitemradio"') -eq 7 -and $dom -match '<button[^>]*aria-checked="true"[^>]*>System</button>' -and (& $count 'aria-checked="true"') -eq 1 -and $dom -match 'id="themeList"[^>]*hidden') "(got $(& $count 'role="menuitemradio"'))"
-        Check 'Actions button counts open actions' ($dom -match 'id="actionsCount"[^>]*>4<' -and $dom -match 'id="actionsView"[^>]*hidden')
 
-        # The open actions view: /#actions opens it instead of the run sheet.
-        $dom = Get-Dom "$base/#actions" 'actions'
-        Check 'actions view replaces the run sheet' ($dom -match 'id="sheet"[^>]*hidden' -and $dom -notmatch 'id="actionsView"[^>]*hidden')
-        Check 'actions view groups by due date'     ((& $count 'class="grp"') -eq 3 -and $dom -match '>Overdue <' -and $dom -match '>Next 7 days <' -and $dom -match '>No due date <') "(got $(& $count 'class="grp"') groups)"
-        Check 'actions view lists actions with a tick box' ($dom -match '<td class="a">Fix save crash</td>' -and (& $count 'aria-label="Done: ') -eq 3) "(got $(& $count 'aria-label="Done: ') boxes)"
-        Check 'a ticket that is a web address is a link' ($dom -match '<a target="_blank" rel="noopener noreferrer" href="https://tracker\.example/GAME-9">https://tracker\.example/GAME-9</a>')
+        # -------------------------------------------------------------------
+        # Using the page: typing, Enter, clicks, save and reopen (tests\selftest.js)
+        # -------------------------------------------------------------------
+        Write-Host 'Page interaction (headless Edge)'
+        # A copy of the app with the driver script added to the page, on the next port with its own
+        # data folder. That folder starts with one meeting, so this server writes a startup backup.
+        $app2  = Join-Path $work 'app'
+        $data2 = Join-Path $work 'data2'
+        New-Item -ItemType Directory -Path $app2, $data2 -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $appDir 'MeetingRunSheet.ps1') -Destination $app2
+        Copy-Item -LiteralPath (Join-Path $appDir 'lib') -Destination $app2 -Recurse
+        Copy-Item -LiteralPath (Join-Path $appDir 'web') -Destination $app2 -Recurse
+        Copy-Item -LiteralPath (Join-Path $testsDir 'selftest.js') -Destination (Join-Path $app2 'web')
+        $index = Join-Path $app2 'web\index.html'
+        [System.IO.File]::WriteAllText($index, [System.IO.File]::ReadAllText($index).Replace('</body>', '<script src="selftest.js"></script></body>'), (New-Object System.Text.UTF8Encoding($false)))
+        Copy-Item -LiteralPath (Join-Path $data "$idA.json") -Destination $data2
+        $base2 = "http://localhost:$($Port + 1)"
+        $server2 = Start-Process -FilePath $hostExe -PassThru -WindowStyle Hidden `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$app2\MeetingRunSheet.ps1`" -Port $($Port + 1) -DataDir `"$data2`" -NoBrowser" `
+            -RedirectStandardOutput (Join-Path $work 'server2.out') -RedirectStandardError (Join-Path $work 'server2.err')
+        $up = $false
+        for ($i = 0; $i -lt 60 -and -not $up -and -not $server2.HasExited; $i++) {
+            Start-Sleep -Milliseconds 250
+            try { $res = [System.Net.HttpWebRequest]::Create("$base2/").GetResponse(); $up = [int]$res.StatusCode -eq 200; $res.Close() } catch { }
+        }
+        Check 'second server starts from the copy' $up
+        Check 'startup writes a backup zip when there are meetings' (@(Get-ChildItem -Path (Join-Path $data2 'backups') -Filter 'meetings-*.zip' -ErrorAction SilentlyContinue).Count -eq 1)
+        Check 'no startup backup for an empty data folder' (-not (Test-Path (Join-Path $data 'backups')))
+
+        $dom = Get-Dom "$base2/#selftest" 'selftest' 20000
+        $found = [regex]::Match($dom, '<pre id="selftest">([\s\S]*?)</pre>')
+        $lines = @()
+        if ($found.Success) { $lines = @($found.Groups[1].Value -split "`r?`n" | Where-Object { $_.Trim() }) }
+        Check 'interaction script ran' ($lines.Count -gt 0)
+        foreach ($line in $lines) { Check ('page: ' + $line.Substring(5)) ($line.StartsWith('PASS ')) }
+        Check 'Delete moved the file to the deleted folder' (@(Get-ChildItem -Path (Join-Path $data2 'deleted') -Filter '*.json' -ErrorAction SilentlyContinue).Count -eq 1)
+        Check 'page settings are a file in the data folder' (Test-Path (Join-Path $data2 'settings\page.json'))
     }
 } finally {
+    if ($server2 -and -not $server2.HasExited) { Stop-Process -Id $server2.Id -Force }
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
     $err = Join-Path $work 'server.err'
     if ((Test-Path $err) -and (Get-Item $err).Length -gt 0) {

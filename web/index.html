@@ -55,20 +55,18 @@
         <button data-phase="plan" aria-current="true">1 Plan</button><button data-phase="run">2 Run</button><button data-phase="wrap">3 Wrap up</button>
       </nav>
       <div class="toolbar">
-        <button id="actionsBtn" aria-pressed="false" title="Open actions from every meeting">Actions<span class="pill prep" id="actionsCount" hidden></span></button>
         <button class="primary" id="saveBtn" title="Ctrl+S">Save</button>
         <div class="menu-wrap">
           <button class="icon" id="moreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="moreMenu" title="More">&#8943;</button>
           <div class="menu" id="moreMenu" role="menu" hidden>
             <button role="menuitem" id="copyBtn" title="Plain text, for chat or email">Copy notes</button>
-            <button role="menuitem" id="copyMdBtn" title="With headings and ticket links, for a wiki, Confluence or GitHub">Copy notes as Markdown</button>
-            <button role="menuitem" id="followBtn" title="New meeting with the same brief and any open actions">Follow-up meeting</button>
+            <button role="menuitem" id="copyMdBtn" title="With headings, for a wiki, Confluence or GitHub">Copy notes as Markdown</button>
+            <button role="menuitem" id="followBtn" title="New meeting with the same brief, attendees and agenda">Follow-up meeting</button>
+            <button role="menuitem" id="repeatBtn" title="Plan this meeting again for the coming weeks">Repeat weekly...</button>
             <hr>
             <button role="menuitem" id="backupBtn" title="Every saved meeting in one zip file">Download backup (.zip)</button>
             <button role="menuitem" id="restoreBtn" title="Adds meetings from a backup zip; never overwrites one you have">Restore from backup...</button>
-            <button role="menuitem" id="csvBtn" title="Every action from every meeting, for Excel or a tracker import">Export actions (CSV)</button>
             <hr>
-            <button role="menuitem" id="ticketBtn" title="Turn ticket keys into links to your tracker">Ticket links...</button>
             <button role="menuitem" id="themeBtn" aria-expanded="false" aria-controls="themeList" title="System follows your Windows or browser setting">Theme: System</button>
             <!-- One button per theme (setupTheme in app.js, from THEMES in theme.js) -->
             <div class="theme-list" id="themeList" role="group" aria-label="Theme" hidden></div>
@@ -84,40 +82,24 @@
       <span id="confirmMsg"></span>
       <div class="toolbar"><button class="primary" id="confirmYes">Yes</button><button id="confirmNo">Cancel</button></div>
     </div>
-    <!-- Tracker address for ticket links (setupTicketLinks in app.js); kept in the browser, not in meeting files -->
-    <div class="card ticket-box" id="ticketBox" hidden>
-      <label class="label" for="ticketUrl">Ticket links: your tracker's address. The ticket key is added at the end.</label>
-      <input id="ticketUrl" type="url" placeholder="https://yourstudio.atlassian.net/browse/">
-      <p class="hint">Write {key} where the key goes if that isn't the end. Kept in this browser only. Leave it empty for no links.</p>
-      <div class="toolbar"><button class="primary" id="ticketSave">Save</button><button id="ticketCancel">Cancel</button></div>
+    <!-- "Repeat weekly..." in the menu (setupRepeat in app.js) -->
+    <div class="card repeat-box" id="repeatBox" hidden>
+      <label class="label" for="repeatCount">Plan this meeting again, one a week, for this many more weeks</label>
+      <input id="repeatCount" type="number" min="1" max="12" step="1" value="4">
+      <p class="hint">Each copy gets the brief, start time, attendees and agenda, and can be changed on its own.</p>
+      <div class="toolbar"><button class="primary" id="repeatGo">Plan them</button><button id="repeatCancel">Cancel</button></div>
     </div>
     <div class="card" id="fallbackBox" hidden>
       <div class="label label-above">Copy didn't go through. Select this text and copy it.</div>
       <textarea id="copyFallback" readonly></textarea>
     </div>
 
-    <!-- Open actions from every meeting, shown instead of the run sheet (showActions in app.js) -->
-    <section class="card open-actions" id="actionsView" aria-labelledby="openActH" hidden>
-      <div class="card-head">
-        <h2 id="openActH" class="card-title">Open actions</h2>
-        <button class="ghost" id="actionsBack">&larr; Back to the run sheet</button>
-      </div>
-      <input id="actFilter" type="search" placeholder="Filter by owner, action, ticket or meeting..." aria-label="Filter actions">
-      <div class="table-wrap" id="openActionsTable">
-        <table>
-          <thead><tr><th>Done</th><th>Action</th><th>Owner</th><th>Due</th><th>Ticket</th><th>Meeting</th></tr></thead>
-          <tbody id="openActionRows"></tbody>
-        </table>
-      </div>
-      <div class="empty" id="openActionsEmpty" hidden></div>
-    </section>
-
     <!-- The run sheet, one phase at a time: Plan (brief, agenda, attendees), Run (agenda with its
          records, actions, parking lot) and Wrap up (decisions, actions, notes, self-review).
          data-in lists the phases a card shows in; styles.css hides the rest, and the checklist
          card shows only its own phase's items. Each input id is "f-" + a key of FIELDS in app.js
-         (fields.parking has no input: it is the parking lot list; fields.decisions has none since
-         the Other decisions box was removed, and only shows in Copy notes).
+         (fields.parking and fields.decisions have no input: they are the parking lot and Other
+         decisions lists).
          data-help on a label becomes a (?) tooltip next to it (see setupHelp in app.js). -->
     <div class="sheet" id="sheet" data-phase="plan">
     <!-- Is the meeting ready? Filled in by showStrips() in app.js -->
@@ -159,17 +141,39 @@
         <div class="agenda-bar" id="agendaBar" aria-hidden="true" hidden></div>
         <table class="row-table agenda-table"><tbody id="agendaRows"></tbody></table>
         <div class="row-foot"><button class="ghost" id="addAgenda">+ Add item</button><div class="agenda-sum" id="agendaSum" aria-live="polite" hidden></div></div>
+        <!-- Actions that belong to no agenda item (older files, or an item that was removed);
+             only shown in Run when there are any (showItemActions in app.js) -->
+        <div class="loose-acts" id="looseActs" data-in="run" hidden>
+          <span class="label">Actions with no agenda item</span>
+          <div class="rec-acts" id="looseActList"></div>
+        </div>
+      </section>
+
+      <!-- In a follow-up: what came out of the meeting it follows (showLastTime in app.js) -->
+      <section class="card" id="lastTime" data-in="plan" aria-labelledby="lastH" hidden>
+        <h2 id="lastH" class="card-title">Last time</h2>
+        <div class="summary" id="lastBody"></div>
       </section>
 
       <!-- Summary: every agenda item with its decision and its actions, then the parking lot
            (showSummary in app.js) -->
       <section class="card" data-in="wrap" aria-labelledby="sumH">
         <h2 id="sumH" class="card-title">Summary</h2>
+        <!-- Title, date and attendees: only on paper (see @media print in styles.css) -->
+        <div class="print-head" id="printHead"></div>
         <div class="summary" id="summary"></div>
       </section>
 
+      <!-- Decisions that belong to no agenda item: saved as fields.decisions, one per line
+           (otherDecisions, lineList in app.js); Wrap up shows them in the summary. -->
+      <section class="card" data-in="run">
+        <span class="card-title" data-for="decisionRows" data-help="Decisions that belong to no agenda item. A decision on an item goes under that item (Notes). Press Enter in a row to add the next one.">Other decisions</span>
+        <table class="row-table"><tbody id="decisionRows"></tbody></table>
+        <div class="row-foot"><button class="ghost" id="addDecision">+ Add decision</button></div>
+      </section>
+
       <!-- Parking lot: saved as fields.parking, one item per line. Run edits it as a list
-           (parkingEditor, rowEditor in app.js); Wrap up shows it at the end of the summary. -->
+           (parking, lineList in app.js); Wrap up shows it at the end of the summary. -->
       <section class="card" data-in="run">
         <span class="card-title" data-for="parkingRows" data-help="Off-topic items raised in the meeting, and who follows up on each. Press Enter in a row to add the next one.">Parking lot</span>
         <table class="row-table"><tbody id="parkingRows"></tbody></table>
@@ -196,8 +200,9 @@
       <section class="card" data-in="wrap" aria-labelledby="sendH">
         <h2 id="sendH" class="card-title">Send and follow up</h2>
         <div class="tools">
-          <button id="copyMdBtn2" title="With headings and ticket links, for a wiki, Confluence or GitHub">Copy notes as Markdown</button>
-          <button id="followBtn2" title="New meeting with the same brief and any open actions">Follow-up meeting</button>
+          <button id="copyMdBtn2" title="With headings, for a wiki, Confluence or GitHub">Copy notes as Markdown</button>
+          <button id="printBtn" title="The summary on paper, or as a PDF from the print dialog">Print or save as PDF</button>
+          <button id="followBtn2" title="New meeting with the same brief, attendees and agenda">Follow-up meeting</button>
         </div>
       </section>
 

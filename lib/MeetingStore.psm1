@@ -4,16 +4,17 @@
 #   $store.List('crash')                       # summaries, newest first
 #   $store.Exists($id); $store.ReadRaw($id)
 #   $store.Create($json); $store.Update($json, $id); $store.Remove($id)
-#   $store.BackupZip(); $store.RestoreZip($bytes); $store.ActionsCsv()
-#   $store.OpenActions(); $store.SetActionDone($id, $actionId, $true)
+#   $store.BackupZip(); $store.RestoreZip($bytes); $store.AutoBackup(10)
+#   $store.ReadSettings(); $store.WriteSettings($json)
+#
+# Inside the data folder: deleted\ (meetings removed with Remove), backups\ (AutoBackup zips)
+# and settings\ (page settings). Only <id>.json files at the top level are meetings.
 #
 # Files are UTF-8 without BOM and written temp-then-move, so a crash never leaves
 # a half-written meeting.
 #
-# Follow-ups: a meeting with "follows": "<id>" carries open actions over from that meeting
-# (same action "id"). On every save, the matching actions in the original get
-# "carried": "<follow-up id>" so they stop counting as open; actions removed from the
-# follow-up, or a deleted follow-up, release them again.
+# The store keeps whatever the page sends. Actions in files from before v1.23.0 can have a due
+# date, ticket, "done" and "carried"; nothing here reads them (tracking actions is out of scope).
 
 class MeetingStore {
     [string] $Root
@@ -41,9 +42,10 @@ class MeetingStore {
         return [string]$value
     }
 
-    # Open = has text, not done, not carried to a follow-up.
-    static [bool] IsOpen([object] $action) {
-        return [bool]($action.a -and -not $action.done -and -not $action.carried)
+    # A savedAt value as text (see DayText).
+    static [string] StampText([object] $value) {
+        if ($value -is [datetime]) { return $value.ToString('yyyy-MM-ddTHH:mm:ss.fff') }
+        return [string]$value
     }
 
     [string] PathOf([string] $id) {
@@ -65,39 +67,40 @@ class MeetingStore {
     # ---- Commands used by the API ----
 
     [object] Create([string] $json) {
-        $meeting = $this.Save($json, [MeetingStore]::NewId())
-        $this.SyncCarried($meeting)
-        return $meeting
+        return $this.Save(($json | ConvertFrom-Json), [MeetingStore]::NewId())
     }
 
+    # Returns $null, and writes nothing, when the page's copy is out of date: the page sends the
+    # savedAt it opened the meeting with, and the file has a different one (it was saved from
+    # another tab or window since). A body without savedAt is always written.
     [object] Update([string] $json, [string] $id) {
-        $meeting = $this.Save($json, $id)
-        $this.SyncCarried($meeting)
-        return $meeting
+        $meeting = $json | ConvertFrom-Json
+        if ($meeting.savedAt -and [MeetingStore]::StampText($meeting.savedAt) -ne [MeetingStore]::StampText($this.Read($id).savedAt)) {
+            return $null
+        }
+        return $this.Save($meeting, $id)
     }
 
+    # Deleting moves the file to the "deleted" folder inside the data folder, so a meeting deleted
+    # by mistake can be put back by hand. Deleting the same id again replaces the earlier copy.
     [void] Remove([string] $id) {
-        $meeting = $this.Read($id)
-        [System.IO.File]::Delete($this.PathOf($id))
-        # Treat it as a follow-up with no actions, so everything carried to it is released.
-        $meeting | Add-Member -NotePropertyName id      -NotePropertyValue $id -Force
-        $meeting | Add-Member -NotePropertyName actions -NotePropertyValue @() -Force
-        $this.SyncCarried($meeting)
+        $bin = [System.IO.Path]::Combine($this.Root, 'deleted')
+        [void][System.IO.Directory]::CreateDirectory($bin)
+        $to = [System.IO.Path]::Combine($bin, "$id.json")
+        if ([System.IO.File]::Exists($to)) { [System.IO.File]::Delete($to) }
+        [System.IO.File]::Move($this.PathOf($id), $to)
     }
 
-    # Summaries for the sidebar: {id,title,date,time,type,savedAt,openActions,overdueActions,
-    # hasGoal,agendaCount,beforeChecks}, newest first (by date, then start time).
+    # Summaries for the sidebar: {id,title,date,time,type,savedAt,hasGoal,agendaCount,beforeChecks},
+    # newest first (by date, then start time).
     # $query is a case-insensitive substring match on the raw file text.
     [object[]] List([string] $query) {
-        $today = (Get-Date).ToString('yyyy-MM-dd')
         $items = New-Object System.Collections.Generic.List[object]
         foreach ($file in [System.IO.Directory]::GetFiles($this.Root, '*.json')) {
             $raw = [System.IO.File]::ReadAllText($file, $this.Utf8)
             if ($query -and $raw.IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
             try { $m = $raw | ConvertFrom-Json } catch { continue }   # skip unreadable files
 
-            # Due dates are "yyyy-MM-dd", so they compare as strings.
-            $open = @($m.actions | Where-Object { [MeetingStore]::IsOpen($_) })
             # Agenda rows with text or minutes; before v1.3.0 the agenda was lines of text in fields.agenda.
             $agendaCount = @($m.agenda | Where-Object { $_.t -or $_.m }).Count
             if ($null -eq $m.agenda -and $m.fields.agenda) {
@@ -110,8 +113,6 @@ class MeetingStore {
                 time           = [string]$m.fields.time
                 type           = $m.fields.type
                 savedAt        = $m.savedAt
-                openActions    = $open.Count
-                overdueActions = @($open | Where-Object { $_.d -and [MeetingStore]::DayText($_.d) -lt $today }).Count
                 # For the "Ready / Needs ..." badge on upcoming meetings (see readiness() in app.js).
                 hasGoal        = [bool]([string]$m.fields.goal).Trim()
                 agendaCount    = $agendaCount
@@ -134,7 +135,7 @@ class MeetingStore {
         return $ids.ToArray()
     }
 
-    # ---- Backup, restore and export ----
+    # ---- Backup and restore ----
     # Zip types are named as strings (New-Object), not [type] literals: Windows PowerShell 5.1
     # resolves literals when the class is parsed, before Add-Type has loaded the assembly.
 
@@ -208,83 +209,54 @@ class MeetingStore {
         return [pscustomobject]@{ added = $added; skipped = $skipped; invalid = $invalid }
     }
 
-    # Every action in every meeting as CSV text, newest meeting first.
-    # Status is open, overdue, done or carried (moved to a follow-up meeting).
-    [string] ActionsCsv() {
-        $today = (Get-Date).ToString('yyyy-MM-dd')
-        $sb = New-Object System.Text.StringBuilder
-        [void]$sb.Append("Meeting date,Meeting,Action,Owner,Due,Ticket,Status,Meeting id`r`n")
-        foreach ($s in $this.List('')) {
-            $m = $this.Read($s.id)
-            foreach ($a in @($m.actions)) {
-                if (-not $a.a) { continue }
-                $due = [MeetingStore]::DayText($a.d)
-                $status = 'open'
-                if ($a.done) { $status = 'done' }
-                elseif ($a.carried) { $status = 'carried' }
-                elseif ($due -and $due -lt $today) { $status = 'overdue' }
-                $cells = foreach ($v in @([MeetingStore]::DayText($s.date), $s.title, $a.a, $a.o, $due, $a.t, $status, $s.id)) {
-                    [MeetingStore]::CsvCell($v)
-                }
-                [void]$sb.Append(($cells -join ',') + "`r`n")
-            }
-        }
-        return $sb.ToString()
+    # Writes a backup zip into the "backups" folder inside the data folder and keeps the newest
+    # $keep of them. Called once at startup. Returns the zip's path, or '' when there are no
+    # meetings yet.
+    [string] AutoBackup([int] $keep) {
+        if ([System.IO.Directory]::GetFiles($this.Root, '*.json').Length -eq 0) { return '' }
+        $dir = [System.IO.Path]::Combine($this.Root, 'backups')
+        [void][System.IO.Directory]::CreateDirectory($dir)
+        $path = [System.IO.Path]::Combine($dir, 'meetings-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.zip')
+        [System.IO.File]::WriteAllBytes($path, $this.BackupZip())
+        # The names sort by date, so the oldest are the ones past the first $keep.
+        $old = @([System.IO.Directory]::GetFiles($dir, 'meetings-*.zip') | Sort-Object -Descending | Select-Object -Skip $keep)
+        foreach ($file in $old) { [System.IO.File]::Delete($file) }
+        return $path
     }
 
-    # One quoted CSV value. Text starting with = + - @ (or a tab / CR) gets a leading ' so
-    # Excel shows it instead of running it as a formula.
-    static [string] CsvCell([object] $value) {
-        $text = [string]$value
-        if ($text -match '^[=+\-@\t\r]') { $text = "'" + $text }
-        return '"' + $text.Replace('"', '""') + '"'
+    # ---- Page settings ----
+    # The theme and the sidebar choice, in "settings\page.json" inside the data folder (a subfolder,
+    # so the file is never taken for a meeting). Only the known keys are kept.
+
+    [string] ReadSettings() {
+        $path = [System.IO.Path]::Combine($this.Root, 'settings', 'page.json')
+        if (-not [System.IO.File]::Exists($path)) { return '{}' }
+        return [System.IO.File]::ReadAllText($path, $this.Utf8)
     }
 
-    # ---- Actions across meetings ----
-
-    # Every open action in every meeting, soonest due first (no due date last):
-    # {meetingId, meeting, meetingDate, id, a, o, d, t}. "id" is '' in files from before v1.2.0
-    # that haven't been saved since, so those can't be ticked off with SetActionDone.
-    [object[]] OpenActions() {
-        $items = New-Object System.Collections.Generic.List[object]
-        foreach ($s in $this.List('')) {
-            $m = $this.Read($s.id)
-            foreach ($a in @($m.actions | Where-Object { [MeetingStore]::IsOpen($_) })) {
-                $items.Add([pscustomobject]@{
-                    meetingId   = $s.id
-                    meeting     = [string]$s.title
-                    meetingDate = $s.date
-                    id          = [string]$a.id
-                    a           = [string]$a.a
-                    o           = [string]$a.o
-                    d           = [MeetingStore]::DayText($a.d)
-                    t           = [string]$a.t
-                })
-            }
-        }
-        return @($items | Sort-Object -Property @{ Expression = { if ($_.d) { $_.d } else { '9999' } } },
-                                                @{ Expression = { "$($_.meetingDate)" } })
-    }
-
-    # Ticks (or unticks) one action and leaves the rest of the meeting as it is. Like SyncCarried,
-    # this doesn't change savedAt. Returns $false if the meeting has no action with that id.
-    [bool] SetActionDone([string] $id, [string] $actionId, [bool] $done) {
-        $meeting = $this.Read($id)
-        $action = @($meeting.actions | Where-Object { $_.id -and [string]$_.id -eq $actionId }) | Select-Object -First 1
-        if (-not $action) { return $false }
-        $action | Add-Member -NotePropertyName done -NotePropertyValue $done -Force
-        $this.Write($id, $meeting)
-        return $true
+    # Returns the settings as stored. "theme" is always written ('' = follow the system), which is
+    # how the page tells "nothing stored yet" from "stored".
+    [string] WriteSettings([string] $json) {
+        $sent = $json | ConvertFrom-Json
+        $theme = ''
+        if ($sent.theme -is [string] -and $sent.theme -match '^[a-z]{1,20}$') { $theme = $sent.theme }
+        $text = ConvertTo-Json -InputObject ([ordered]@{ theme = $theme; sideOff = ($sent.sideOff -eq $true) }) -Compress
+        $dir = [System.IO.Path]::Combine($this.Root, 'settings')
+        [void][System.IO.Directory]::CreateDirectory($dir)
+        $path = [System.IO.Path]::Combine($dir, 'page.json')
+        [System.IO.File]::WriteAllText("$path.tmp", $text, $this.Utf8)
+        Move-Item -LiteralPath "$path.tmp" -Destination $path -Force -ErrorAction Stop
+        return $text
     }
 
     # ---- Internals ----
 
-    # Parses the meeting JSON sent by the page and writes it under $id.
+    # Writes a meeting sent by the page under $id.
     # The store owns "id" and "savedAt"; any values sent by the page are overwritten.
-    hidden [object] Save([string] $json, [string] $id) {
-        $meeting = $json | ConvertFrom-Json
+    hidden [object] Save([object] $meeting, [string] $id) {
         $meeting | Add-Member -NotePropertyName id      -NotePropertyValue $id -Force
-        $meeting | Add-Member -NotePropertyName savedAt -NotePropertyValue ((Get-Date).ToString('s')) -Force
+        # To the millisecond, so Update can tell two saves in the same second apart.
+        $meeting | Add-Member -NotePropertyName savedAt -NotePropertyValue ((Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fff')) -Force
         $this.Write($id, $meeting)
         return $meeting
     }
@@ -297,29 +269,5 @@ class MeetingStore {
         $tmp  = "$path.tmp"
         [System.IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject $meeting -Depth 10), $this.Utf8)
         Move-Item -LiteralPath $tmp -Destination $path -Force -ErrorAction Stop
-    }
-
-    # Marks the original meeting's actions carried to $followUp if they are still in it,
-    # and releases ones that aren't. Writes the original only if something changed
-    # (without touching its savedAt, so the list order stays put).
-    hidden [void] SyncCarried([object] $followUp) {
-        $fromId = [string]$followUp.follows
-        if (-not [MeetingStore]::IsValidId($fromId) -or $fromId -eq $followUp.id -or -not $this.Exists($fromId)) { return }
-
-        $ids = @($followUp.actions | Where-Object { $_.id } | ForEach-Object { [string]$_.id })
-        $original = $this.Read($fromId)
-        $changed = $false
-        foreach ($a in @($original.actions)) {
-            $carriedHere = $a.carried -and [string]$a.carried -eq $followUp.id
-            $inFollowUp  = $a.id -and $ids -contains [string]$a.id
-            if ($inFollowUp -and -not $carriedHere -and -not $a.carried -and -not $a.done) {
-                $a | Add-Member -NotePropertyName carried -NotePropertyValue $followUp.id -Force
-                $changed = $true
-            } elseif ($carriedHere -and -not $inFollowUp) {
-                $a.PSObject.Properties.Remove('carried')
-                $changed = $true
-            }
-        }
-        if ($changed) { $this.Write($fromId, $original) }
     }
 }

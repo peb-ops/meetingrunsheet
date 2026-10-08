@@ -25,17 +25,17 @@ const PHASES = [
     ["quiet-voices", "Bring in quieter voices", "Ask QA, tech art and juniors directly. They often spot the risk."],
     ["stay-neutral", "Stay neutral while facilitating", "Say when you step out of the role to give your own view."],
     ["call-decision", "Paraphrase, then call the decision", "\"So what I'm hearing is...\", then make the call, or \"disagree and commit\"."],
-    ["read-back", "Read back decisions and actions", "Each action gets one owner and a due date, in the room."],
+    ["read-back", "Read back decisions and actions", "Each action gets one owner, in the room."],
     ["end-on-time", "End on time or early", "Give the time back if you've met the goal."],
   ]},
   { id: "after", name: "After", items: [
-    ["send-notes", "Send notes within a few hours", "Use Copy notes. Decisions, actions (owner + due), parking lot, open questions."],
-    ["log-actions", "Log actions in the tracker", "Jira, Hansoft, Shotgrid or similar. Put the ticket keys in the Ticket column."],
+    ["send-notes", "Send notes within a few hours", "Use Copy notes. Decisions, actions with their owners, parking lot, open questions."],
+    ["log-actions", "Log actions in the tracker", "Jira, Hansoft, Shotgrid or similar. Due dates and follow-up live there, not here."],
   ]},
 ];
 
 // Shown in the timer bar when you press Wrap up after the last agenda item.
-const WRAP_UP = "Read back decisions and actions: each action gets one owner and a due date. Then end on time, or early.";
+const WRAP_UP = "Read back decisions and actions: each action gets one owner. Then end on time, or early.";
 
 // Meeting types: key -> [display name, tip shown under the brief].
 // The key is saved in meeting files. The dropdown lists types in this order; "general" is the default.

@@ -12,14 +12,12 @@ using module .\WebRoot.psm1
 #   GET    /api/meetings?q=    summaries, newest first
 #   POST   /api/meetings       create
 #   GET    /api/meetings/{id}  read
-#   PUT    /api/meetings/{id}  update
-#   DELETE /api/meetings/{id}  delete
+#   PUT    /api/meetings/{id}  update; 409 if the body's savedAt isn't the file's (saved elsewhere since)
+#   DELETE /api/meetings/{id}  delete (the file moves to the "deleted" folder)
+#   GET    /api/settings       page settings {theme, sideOff}, or {} when none are stored
+#   PUT    /api/settings       store page settings
 #   GET    /api/backup         zip of every meeting file (download)
 #   POST   /api/backup         restore: body is a backup zip; adds missing meetings, never overwrites
-#   GET    /api/actions.csv    every action in every meeting (download)
-#   GET    /api/actions        every open action in every meeting, soonest due first
-#   PUT    /api/meetings/{id}/actions/{actionId}   body {"done": true|false}: tick one action
-# Saving or deleting a follow-up also updates "carried" on its original meeting (see MeetingStore).
 # Request bodies are capped (MaxBody, MaxBackup); a bigger one gets 413.
 
 # Thrown by ReadBytes when a request body is over its limit; Handle answers it with 413.
@@ -131,26 +129,11 @@ class RunSheetServer {
             }
         }
 
-        if ($path -eq '/api/actions.csv' -and $method -eq 'GET') {
-            # With a BOM, so Excel reads the text as UTF-8.
-            $bytes = [byte[]](@(0xEF, 0xBB, 0xBF) + $this.Utf8.GetBytes($this.Store.ActionsCsv()))
-            $name = 'meeting-actions-' + (Get-Date -Format 'yyyyMMdd') + '.csv'
-            $this.SendDownload($ctx, $bytes, 'text/csv; charset=utf-8', $name); return
-        }
-
-        if ($path -eq '/api/actions' -and $method -eq 'GET') {
-            $this.SendJson($ctx, @($this.Store.OpenActions()), 200); return
-        }
-
-        $m = [regex]::Match($path, '^/api/meetings/([^/]+)/actions/([^/]+)$')
-        if ($m.Success -and $method -eq 'PUT' -and [MeetingStore]::IsValidId($m.Groups[1].Value) -and [MeetingStore]::IsValidId($m.Groups[2].Value)) {
-            $id = $m.Groups[1].Value
-            $actionId = $m.Groups[2].Value
-            $done = [bool]($this.ReadBody($req) | ConvertFrom-Json).done
-            if (-not $this.Store.Exists($id) -or -not $this.Store.SetActionDone($id, $actionId, $done)) {
-                $this.SendJson($ctx, @{ error = 'Action not found' }, 404); return
+        if ($path -eq '/api/settings') {
+            switch ($method) {
+                'GET' { $this.SendRaw($ctx, 200, $this.Store.ReadSettings()); return }
+                'PUT' { $this.SendRaw($ctx, 200, $this.Store.WriteSettings($this.ReadBody($req))); return }
             }
-            $this.SendJson($ctx, @{ id = $actionId; done = $done }, 200); return
         }
 
         $m = [regex]::Match($path, '^/api/meetings/([^/]+)$')
@@ -161,7 +144,13 @@ class RunSheetServer {
             }
             switch ($method) {
                 'GET'    { $this.SendRaw($ctx, 200, $this.Store.ReadRaw($id)); return }
-                'PUT'    { $this.SendJson($ctx, $this.Store.Update($this.ReadBody($req), $id), 200); return }
+                'PUT'    {
+                    $saved = $this.Store.Update($this.ReadBody($req), $id)
+                    if ($null -eq $saved) {
+                        $this.SendJson($ctx, @{ error = 'This meeting was saved somewhere else after you opened it' }, 409); return
+                    }
+                    $this.SendJson($ctx, $saved, 200); return
+                }
                 'DELETE' { $this.Store.Remove($id); $this.SendJson($ctx, @{ deleted = $id }, 200); return }
             }
         }

@@ -13,6 +13,7 @@
 const NAV_TARGETS = [
   ["Brief", () => $("#briefH").closest("section"), null, false, ["plan"]],
   ["Agenda", () => $("#agendaRows").closest(".card"), null, false, ["plan", "run"]],
+  ["Other decisions", () => $("#decisionRows").closest(".card"), "#decisionRows input", false, ["run"]],
   ["Parking lot", () => $("#parkingRows").closest(".card"), "#parkingRows input", false, ["run"]],
   ["Summary", () => $("#summary").closest(".card"), null, true, ["wrap"]],
   ["Self-review", () => $("#f-reflect").closest(".card"), "#f-reflect", true, ["wrap"]],

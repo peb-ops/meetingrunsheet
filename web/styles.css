@@ -140,7 +140,6 @@ textarea{resize:vertical;min-height:72px;line-height:1.55}
 .item .t{font-weight:500;overflow-wrap:anywhere}
 .item .m{font-size:12.5px;color:var(--muted);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .pill{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
-.pill.overdue{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
 .pill.ready{background:color-mix(in srgb,var(--done) 14%,transparent);color:var(--done)}
 .pill.prep{background:var(--accent-soft);color:var(--accent)}
 .empty{color:var(--muted);font-size:13.5px;padding:10px}
@@ -322,16 +321,25 @@ table.row-table{min-width:0}
 .rec > span.label{padding-top:9px}
 .rec-acts{display:flex;flex-direction:column;gap:4px;min-width:0}
 .rec-acts > button{align-self:flex-start}
-/* Two rows, so the text has the full width: the action, then owner | due | remove */
-.act-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 28px;gap:4px 6px;align-items:center;padding-bottom:6px}
+/* Two rows, so the text has the full width: the action, then owner | remove */
+.act-line{display:grid;grid-template-columns:minmax(0,1fr) 28px;gap:4px 6px;align-items:center;padding-bottom:6px}
 .act-line .grow{grid-column:1/-1}
 .act-line input{padding:7px 9px}
 .act-line input.missing,.act-line input.missing:hover{border-color:var(--warn);border-style:dashed}
-.act-line input.overdue{color:var(--danger);font-weight:600}
-.act-line.done textarea{text-decoration:line-through;color:var(--faint)}
-.act-line.carried textarea,.act-line.carried input{color:var(--faint);font-style:italic}
-.act-line button{padding:3px 7px;border-color:transparent;background:transparent;color:var(--faint)}
-.act-line button:hover{background:var(--field);color:var(--ink)}
+.act-line button.x{padding:3px 7px;border-color:transparent;background:transparent;color:var(--faint)}
+.act-line button.x:hover{background:var(--field);color:var(--ink)}
+/* The people in the meeting, under an action with no owner: one click picks the owner */
+.who-chips{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px}
+.who-chip{padding:1px 9px;font-size:12.5px;font-weight:500;border-radius:99px;color:var(--muted)}
+.who-chip:hover{border-color:var(--accent);color:var(--accent)}
+/* Actions with no agenda item, under the agenda in Run */
+.loose-acts{display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+/* "Left open" tick in an item's record, and its tag in the summary */
+.open-flag{display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--muted)}
+.open-flag input{width:16px;height:16px;accent-color:var(--warn)}
+.tag.open{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
+.repeat-box{display:flex;flex-direction:column;gap:8px}
+.repeat-box input{max-width:90px}
 
 /* Summary card in Wrap up (showSummary in app.js) */
 .summary{display:flex;flex-direction:column}
@@ -344,7 +352,6 @@ table.row-table{min-width:0}
 .tag{flex:none;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--done) 14%,transparent);color:var(--done)}
 .sum-none{font-size:13.5px;color:var(--muted)}
 .sum-acts{margin:2px 0 0;padding-left:20px;overflow-wrap:anywhere}
-.sum-acts li.done{color:var(--faint)}
 .sum-acts .who{color:var(--muted)}
 .sum-acts .warn{color:var(--warn);font-weight:600}
 
@@ -357,7 +364,7 @@ table.people{display:block}
 .people tr{display:flex;align-items:center}
 .people td:first-child{flex:1;min-width:0}
 
-/* ---- Tables (the open actions view) ---- */
+/* ---- Tables (the row editors) ---- */
 .table-wrap{overflow-x:auto;margin:0 -6px;padding:0 6px}
 table{width:100%;border-collapse:collapse;min-width:600px}
 th{text-align:left;padding:6px;font-size:12.5px;font-weight:500;color:var(--muted);border-bottom:1px solid var(--line)}
@@ -366,35 +373,17 @@ tbody tr:first-child td{border-top:0}
 td input[type=text],td input[type=date]{background:transparent;border-color:transparent;padding:7px 8px}
 td input[type=text]:hover,td input[type=date]:hover{border-color:var(--line)}
 td input[type=text]:focus,td input[type=date]:focus{background:var(--surface)}
-td.c{width:48px;text-align:center}
-td.c input{width:17px;height:17px;accent-color:var(--done)}
-tr.done input[type=text],tr.done textarea{text-decoration:line-through;color:var(--faint)}
 td.x{width:40px}
-/* Links, and the tracker address box */
 a{color:var(--accent);text-underline-offset:2px}
 a:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring);border-radius:4px}
-.ticket-box{display:flex;flex-direction:column;gap:8px}
-/* Agenda and attendee rows keep a visible box, unlike the action table */
+/* Agenda, attendee and parking lot rows keep a visible box */
 table.row-table td input[type=text]{background:var(--field);border-color:var(--line)}
 table.row-table td input[type=text]:focus{background:var(--surface);border-color:var(--accent)}
 td.x button{padding:3px 9px;border-color:transparent;background:transparent;color:var(--faint)}
 td.x button:hover{background:var(--field);color:var(--ink)}
 
-/* ---- Open actions view (showActions in app.js) ---- */
+/* ---- The run sheet ---- */
 .sheet{display:flex;flex-direction:column;gap:20px;min-width:0}
-#actionsBtn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
-#actionsBtn .pill{margin-left:6px}
-.open-actions{display:flex;flex-direction:column;gap:12px}
-.open-actions .card-head{margin-bottom:0;align-items:center}
-.open-actions td{padding:9px 8px;overflow-wrap:anywhere}
-.open-actions tr.grp th{padding-top:16px;font-size:12px;font-weight:600;color:var(--faint)}
-.open-actions tr.grp:first-child th{padding-top:4px}
-.open-actions tr.grp + tr td{border-top:0}
-.open-actions tr.done td.a{text-decoration:line-through;color:var(--faint)}
-.open-actions td.due{white-space:nowrap;font-variant-numeric:tabular-nums}
-.open-actions td.warn{color:var(--warn)}
-.open-actions td.overdue{color:var(--danger);font-weight:600}
-.open-actions .when{margin-left:6px;font-size:12.5px;color:var(--muted);white-space:nowrap}
 
 /* ---- Checklist phases ---- */
 .phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px 24px;align-items:start}
@@ -445,3 +434,27 @@ ul.checks input:checked + span .t{text-decoration:line-through;color:var(--faint
   .topbar h1{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---- Print: the Wrap up summary on paper ("Print or save as PDF") ----
+   Black on white whatever the theme (:root three times, so it beats every theme block), and only
+   the outcome strip and the summary card, under a heading with the title, date and attendees. */
+.print-head{display:none}
+@media print{
+  :root:root:root{
+    --bg:#FFFFFF; --surface:#FFFFFF; --field:#FFFFFF; --ink:#000000; --muted:#444444; --faint:#666666;
+    --line:#CCCCCC; --line-strong:#999999; --accent:#000000; --accent-soft:#EEEEEE;
+    --done:#0B6B2E; --warn:#8A4500; --danger:#A00000; --shadow:none; --shadow-lg:none;
+    color-scheme:light;
+  }
+  body{padding:0}
+  .side-col,.topbar,.timer,.jump,.toast,.confirm,.col-side,.strip button,#fallbackBox,#repeatBox{display:none!important}
+  .app,.app.side-off{display:block;max-width:none}
+  .card{border:0;box-shadow:none;padding:0;background:none}
+  .strip{padding:0 0 12px}
+  .print-head{display:block;margin-bottom:14px}
+  .print-head h1{margin:0 0 4px;font-size:22px}
+  .print-head p{margin:0;color:var(--muted)}
+  .print-head p:empty,#sumH{display:none}
+  .sum-item{break-inside:avoid}
+  .sum-item .link{text-decoration:none}
+}

@@ -22,9 +22,11 @@ function isoDay(date) {
   return d.toISOString().slice(0, 10);
 }
 const today = () => isoDay(new Date());
-// Action ids stay the same when an action is carried into a follow-up meeting.
+// Ids for actions and agenda items.
 const newActionId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const blankAction = () => ({ id: newActionId(), a: "", o: "", d: "", t: "", done: false });
+// An action point is what gets done and who owns it. Planning and tracking it (due date, ticket,
+// done) belongs in a tracker; files from before v1.23.0 keep those values (d, t, done, carried).
+const blankAction = () => ({ id: newActionId(), a: "", o: "" });
 const blankAgendaRow = () => ({ id: newActionId(), t: "", m: null });
 const blank = () => ({ id: null, follows: null, fields: { type: "general", date: today() }, checks: {},
                        agenda: [blankAgendaRow()], attendees: [""], actions: [blankAction()] });
@@ -49,8 +51,20 @@ async function api(method, url, body) {
   const txt = await r.text();
   let data = null;
   try { data = txt ? JSON.parse(txt) : null; } catch (e) {}
-  if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
+  if (!r.ok) {
+    const err = new Error((data && data.error) || ("HTTP " + r.status));
+    err.status = r.status;
+    throw err;
+  }
   return data;
+}
+
+// A new element with a class and text (both optional).
+function elem(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text) node.textContent = text;
+  return node;
 }
 
 /* ---- Status, toast, confirm ---- */
@@ -136,12 +150,12 @@ function showStrips() {
   const decisions = state.agenda.filter(r => r.d && r.d.trim()).length
     + (f.decisions || "").split("\n").filter(x => x.trim()).length;
   const acts = state.actions.filter(a => a.a && a.a.trim());
-  const weak = acts.filter(a => !a.done && !a.carried && !(a.o && a.o.trim() && a.d)).length;
+  const weak = acts.filter(a => !(a.o && a.o.trim())).length;
   $("#oGoal").textContent = goal || "No goal was set";
   $("#oDecisions").textContent = count(decisions, "decision");
   $("#oActions").textContent = count(acts.length, "action");
   $("#oWeak").hidden = !weak;
-  $("#oWeak").textContent = `${count(weak, "action")} need${weak === 1 ? "s" : ""} an owner or a date`;
+  $("#oWeak").textContent = `${count(weak, "action")} need${weak === 1 ? "s" : ""} an owner`;
 }
 
 function ask(message, yesLabel, fn, onNo) {
@@ -179,11 +193,14 @@ function showTip() {
   tip.append(b, document.createTextNode(tipText));
 }
 
-/* ---- Agenda: rows of { id, t: title, m: minutes, d: decision, n: notes } ----
-   An action belongs to an agenda item when its g is that item's id (see showItemActions). */
+/* ---- Agenda: rows of { id, t: title, m: minutes, d: decision, n: notes, nd: left open } ----
+   An action belongs to an agenda item when its g is that item's id (see showItemActions).
+   nd ("no decision") marks an item that was discussed and deliberately left open. */
 
 // A row counts once it has a title, minutes, or something recorded on it.
-const agendaFilled = r => !!((r.t && r.t.trim()) || r.m || (r.d && r.d.trim()) || (r.n && r.n.trim()));
+const agendaFilled = r => !!((r.t && r.t.trim()) || r.m || (r.d && r.d.trim()) || (r.n && r.n.trim()) || r.nd);
+// Left open only counts while no decision is written.
+const leftOpen = r => !!r.nd && !(r.d && r.d.trim());
 
 // Filled-in rows as [{ title, min }] (min is null when not set). Used by the agenda check and the timer.
 function agendaItems() {
@@ -197,6 +214,7 @@ const agendaToSave = () => (state.agenda || []).filter(agendaFilled).map(r => {
   const row = { id: r.id, t: (r.t || "").trim() || "Untitled item", m: +r.m > 0 ? +r.m : null };
   if (r.d && r.d.trim()) row.d = r.d.trim();
   if (r.n && r.n.trim()) row.n = r.n.trim();
+  if (leftOpen(r)) row.nd = true;
   return row;
 });
 
@@ -312,6 +330,8 @@ const agendaEditor = rowEditor({
       <div class="rec" id="ag-rec-${i}" hidden>
         <label class="label" for="ag-d-${i}">Decision</label>
         <div class="grow"><textarea id="ag-d-${i}" rows="1" placeholder="What was decided, in one line"></textarea><span aria-hidden="true"></span></div>
+        <span></span>
+        <label class="open-flag" for="ag-o-${i}"><input type="checkbox" id="ag-o-${i}"> Left open: no decision was made</label>
         <label class="label" for="ag-n-${i}">Notes</label>
         <div class="grow"><textarea id="ag-n-${i}" rows="2" placeholder="Key points of the discussion"></textarea><span aria-hidden="true"></span></div>
         <span class="label">Actions</span>
@@ -327,6 +347,9 @@ const agendaEditor = rowEditor({
     growBox(decision, row.d, true, v => { row.d = v; agendaChanged(); });
     growBox(itemNotes, row.n, false, v => { row.n = v; agendaChanged(); });
     decision.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); itemNotes.focus(); } };
+    const open = tr.querySelector(`#ag-o-${i}`);
+    open.checked = !!row.nd;
+    open.onchange = () => { row.nd = open.checked; agendaChanged(); };
     min.value = row.m ?? "";
     min.oninput = () => { row.m = min.value === "" ? null : +min.value; agendaChanged(); };
     tr.querySelector(".rec-toggle").onclick = () => {
@@ -349,54 +372,54 @@ function showRecord(tr, row) {
   const sum = tr.querySelector(".rec-sum");
   tr.querySelector(".rec").hidden = !open;
   tr.querySelector(".rec-toggle").setAttribute("aria-expanded", open);
-  sum.hidden = open || !(decision || itemNotes || acts);
+  sum.hidden = open || !(decision || itemNotes || acts || row.nd);
   sum.classList.toggle("decided", !!decision);
   sum.textContent = [
-    decision ? "Decision: " + decision + (itemNotes ? " (+ notes)" : "") : itemNotes ? "Notes: " + itemNotes : "",
+    decision ? "Decision: " + decision + (itemNotes ? " (+ notes)" : "") : row.nd ? "Left open" + (itemNotes ? " (+ notes)" : "")
+      : itemNotes ? "Notes: " + itemNotes : "",
     acts ? `${acts} action${acts > 1 ? "s" : ""}` : "",
   ].filter(Boolean).join(" \u00b7 ");
 }
 
 /* ---- Actions on agenda items ----
    In Run the agenda box is also where actions are written: each item's record lists the actions
-   that came out of it (action.g = the item's id). Actions with no item (carried over from another
-   meeting, from files saved before v1.17.0, or whose item was removed) can't be edited here; they
-   show in the Wrap up summary. */
+   that came out of it (action.g = the item's id). Actions with no item (from files saved before
+   v1.17.0, or whose item was removed) show under the agenda when there are any (#looseActs):
+   they can be changed and removed there, but new actions always start on an item. */
 
-// One action as a line: what, owner, due, remove.
+// One action as a line: what, owner, remove. An action with no owner gets a dashed outline and,
+// under it, the people in the meeting as buttons: one click makes that person the owner.
 function actionLine(act) {
   const line = document.createElement("div");
   line.className = "act-line";
   line.innerHTML = `<div class="grow"><textarea rows="1" aria-label="Action" placeholder="What gets done"></textarea><span aria-hidden="true"></span></div>
     <input type="text" list="ownerList" aria-label="Owner" placeholder="Owner">
-    <input type="date" aria-label="Due">
-    <button class="x" aria-label="Remove action">&times;</button>`;
+    <button class="x" aria-label="Remove action">&times;</button>
+    <div class="who-chips"></div>`;
   const text = line.querySelector("textarea");
-  const [owner, due] = line.querySelectorAll("input");
+  const owner = line.querySelector("input");
+  const chips = line.querySelector(".who-chips");
   const flag = () => {
-    const open = !!(act.a && act.a.trim()) && !act.done && !act.carried;
-    owner.classList.toggle("missing", open && !(act.o && act.o.trim()));
-    due.classList.toggle("missing", open && !act.d);
-    due.classList.toggle("overdue", isOverdue(act));
+    const none = !(act.o && act.o.trim());
+    owner.classList.toggle("missing", !!(act.a && act.a.trim()) && none);
+    chips.hidden = !none || !chips.childElementCount;
   };
+  peopleNames().forEach(name => {
+    const chip = elem("button", "who-chip", name);
+    chip.title = "Make " + name + " the owner";
+    chip.onclick = () => { act.o = name; owner.value = name; flag(); markDirty(); fillOwnerList(); };
+    chips.append(chip);
+  });
   growBox(text, act.a, true, v => { act.a = v; flag(); markDirty(); });
   owner.value = act.o || "";
   owner.oninput = () => { act.o = owner.value; flag(); markDirty(); };
   owner.onchange = fillOwnerList;
-  due.value = act.d || "";
-  due.oninput = () => { act.d = due.value; flag(); markDirty(); };
-  line.querySelector("button").onclick = () => {
+  line.querySelector("button.x").onclick = () => {
     state.actions.splice(state.actions.indexOf(act), 1);
     if (!state.actions.length) state.actions.push(blankAction());
     markDirty();
     showItemActions();
   };
-  line.classList.toggle("done", !!act.done);
-  if (act.carried) {   // lives in a follow-up meeting now: read-only here, as in the table
-    line.classList.add("carried");
-    [text, owner, due].forEach(box => { box.readOnly = true; });
-    line.querySelector("button").hidden = true;
-  }
   flag();
   return line;
 }
@@ -424,7 +447,13 @@ function showItemActions() {
     fillActs(tr.querySelector(".rec-acts"), state.actions.filter(a => a.g === row.id), row.id);
     showRecord(tr, row);
   });
+  const loose = looseActions();
+  $("#looseActs").hidden = !loose.length;
+  $("#looseActList").replaceChildren(...loose.map(actionLine));
 }
+
+// Written actions that belong to no agenda item in this meeting.
+const looseActions = () => state.actions.filter(a => a.a && a.a.trim() && !state.agenda.some(r => r.id === a.g));
 
 // Opens or closes a row's record without redrawing the agenda. Used by the timer too (timer.js).
 function setRecord(row, open) {
@@ -443,26 +472,17 @@ function editRecord(row) {
 }
 
 // The Summary card in Wrap up: each agenda item with its decision and the actions that came out of
-// it (owner and due date, or what is missing), then the actions that belong to no item (carried
-// over from another meeting, or from an older file) when there are any, then the parking lot.
+// it (with the owner, or a note that it needs one), then the actions that belong to no item (from
+// an older file, or whose item was removed) when there are any, then the parking lot.
 // Read-only: an item's title opens it in Run, where its decision and actions are edited.
 function showSummary() {
-  const el = (tag, cls, text) => {
-    const node = document.createElement(tag);
-    if (cls) node.className = cls;
-    if (text) node.textContent = text;
-    return node;
-  };
+  const el = elem;
   const actList = acts => {
     const ul = el("ul", "sum-acts");
     acts.forEach(a => {
-      const li = el("li", a.done ? "done" : "", a.a.trim());
-      const open = !a.done && !a.carried;
+      const li = el("li", "", a.a.trim());
       const owner = (a.o || "").trim();
-      li.append(el("span", open && !owner ? "warn" : "who", " \u00b7 " + (owner || "needs an owner")));
-      li.append(el("span", open && !a.d ? "warn" : "who", " \u00b7 " + (a.d ? "due " + a.d : "needs a date")));
-      if (a.done) li.append(el("span", "who", " \u00b7 done"));
-      if (a.carried) li.append(el("span", "who", " \u00b7 carried to the follow-up"));
+      li.append(el("span", owner ? "who" : "warn", " \u00b7 " + (owner || "needs an owner")));
       ul.append(li);
     });
     return ul;
@@ -481,20 +501,41 @@ function showSummary() {
       line.append(el("span", "tag", "Decision"), el("span", "", row.d.trim()));
       block.append(line);
     }
+    if (leftOpen(row)) {
+      const line = el("div", "sum-dec");
+      line.append(el("span", "tag open", "Left open"), el("span", "", "No decision was made"));
+      block.append(line);
+    }
     if (acts.length) block.append(actList(acts));
-    if (!(row.d && row.d.trim()) && !acts.length) block.append(el("div", "sum-none", "No decision or action recorded"));
+    if (!(row.d && row.d.trim()) && !leftOpen(row) && !acts.length) block.append(el("div", "sum-none", "No decision or action recorded"));
     return block;
   });
+  const other = otherDecisions.lines();
+  if (other.length) {
+    const block = el("div", "sum-item");
+    const list = el("ul", "parked");
+    list.append(...other.map(text => el("li", "", text)));
+    block.append(el("div", "sum-head", "Other decisions"), list);
+    blocks.push(block);
+  }
   const loose = written.filter(a => !rows.some(r => r.id === a.g));
   if (loose.length) {
     const block = el("div", "sum-item");
-    block.append(el("div", "sum-head", "Carried over / no agenda item"), actList(loose));
+    block.append(el("div", "sum-head", "No agenda item"), actList(loose));
     blocks.push(block);
   }
   if (!blocks.length) blocks.push(el("div", "sum-none", "Nothing recorded yet."));
 
+  // Only printed (styles.css): what the meeting was, since the brief isn't on the Wrap up page.
+  const f = state.fields;
+  const people = attendeesToSave();
+  $("#printHead").replaceChildren(
+    el("h1", "", f.title || "Meeting notes"),
+    el("p", "", [f.date, f.time, typeName(f.type)].filter(Boolean).join(" \u00b7 ")),
+    el("p", "", people.length ? "Attendees: " + people.join(", ") : ""));
+
   const park = el("div", "sum-item");
-  const items = parkingLines();
+  const items = parking.lines();
   const list = el("ul", "parked");
   list.append(...items.map(text => el("li", "", text)));
   park.append(el("div", "sum-head", "Parking lot"), items.length ? list : el("div", "sum-none", "Nothing parked."));
@@ -553,39 +594,48 @@ const attendeeEditor = rowEditor({
   },
 });
 
-/* ---- Parking lot ----
-   Saved as text in fields.parking, one item per line (it used to be one text box). Run edits it
-   as a list; Wrap up shows it at the end of the summary (showSummary). */
+/* ---- Parking lot and other decisions ----
+   Each is saved as text in one field (fields.parking, fields.decisions), one item per line. Run
+   edits them as lists; Wrap up shows them in the summary (showSummary). */
 
-let parked = [""];   // the rows being edited, empty ones included
-
-const parkingLines = () => String(state.fields.parking || "").split("\n").map(s => s.trim()).filter(Boolean);
-
-const parkingChanged = () => {
-  state.fields.parking = parked.map(s => s.trim()).filter(Boolean).join("\n");
-  markDirty();
-};
-
-const parkingEditor = rowEditor({
-  tbody: $("#parkingRows"),
-  list: () => parked,
-  blank: () => "",
-  removeLabel: "Remove item",
-  changed: parkingChanged,
-  cells: (text, i) => `<td><input type="text" id="park-${i}" aria-label="Parking lot item ${i + 1}" placeholder="${i ? "Next item" : "e.g. Controller remapping - Sam starts a thread"}"></td>`,
-  bind: (tr, text, i) => {
-    const input = tr.querySelector("input");
-    input.value = text;
-    input.oninput = () => { parked[i] = input.value; parkingChanged(); };
-    return [input];
-  },
-});
-
-function renderParking() {
-  parked = parkingLines();
-  if (!parked.length) parked = [""];
-  parkingEditor.render();
+// A row editor over the lines of state.fields[field]. Row inputs get the ids "<prefix>-0", "-1"...
+function lineList({ field, prefix, tbody, label, example }) {
+  let rows = [""];   // the rows being edited, empty ones included
+  const lines = () => String(state.fields[field] || "").split("\n").map(s => s.trim()).filter(Boolean);
+  const changed = () => {
+    state.fields[field] = rows.map(s => s.trim()).filter(Boolean).join("\n");
+    markDirty();
+  };
+  const editor = rowEditor({
+    tbody,
+    list: () => rows,
+    blank: () => "",
+    removeLabel: "Remove item",
+    changed,
+    cells: (text, i) => `<td><input type="text" id="${prefix}-${i}" aria-label="${label} ${i + 1}" placeholder="${i ? "Next item" : example}"></td>`,
+    bind: (tr, text, i) => {
+      const input = tr.querySelector("input");
+      input.value = text;
+      input.oninput = () => { rows[i] = input.value; changed(); };
+      return [input];
+    },
+  });
+  return {
+    lines,
+    add: () => editor.add(rows.length),
+    render: () => {
+      rows = lines();
+      if (!rows.length) rows = [""];
+      editor.render();
+    },
+  };
 }
+
+const parking = lineList({ field: "parking", prefix: "park", tbody: $("#parkingRows"), label: "Parking lot item",
+                           example: "e.g. Controller remapping - Sam starts a thread" });
+// Decisions that belong to no agenda item; a decision on an item is the item's own d.
+const otherDecisions = lineList({ field: "decisions", prefix: "dec", tbody: $("#decisionRows"), label: "Decision",
+                                  example: "e.g. The next playtest moves to Thursday" });
 
 // The line under the agenda: total minutes against the timebox, and items missing minutes.
 // Also the bar above it: one segment per item, as wide as its share of the time; the grey end is
@@ -702,73 +752,22 @@ function updateCounts() {
   });
 }
 
-/* ---- Ticket links ---- */
+/* ---- Action owners ---- */
 
-// The tracker address that ticket keys are added to, e.g. "https://studio.atlassian.net/browse/".
-// Set from the "..." menu and kept in this browser only (localStorage), never in meeting files.
-const TICKET_KEY = "runsheet-ticket-url";
-const isWebAddress = text => /^https?:\/\/\S+$/i.test(text);
-let ticketBase = "";
-try { ticketBase = localStorage.getItem(TICKET_KEY) || ""; } catch (e) {}
-if (!isWebAddress(ticketBase)) ticketBase = "";
-
-// Where a ticket links to, or "" for no link. A ticket that is already a full address links to
-// itself. "{key}" in the tracker address marks where the key goes; without it, the key goes at the end.
-function ticketHref(ticket) {
-  const key = (ticket || "").trim();
-  if (isWebAddress(key)) return key;
-  if (!key || !ticketBase) return "";
-  const part = encodeURIComponent(key);
-  return ticketBase.includes("{key}") ? ticketBase.replace("{key}", part) : ticketBase + part;
+// Names without blanks or repeats (compared without case), in the order given.
+function uniqueNames(list) {
+  const seen = new Set();
+  return list.map(n => (n || "").trim()).filter(n => n && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
 }
 
-// Opens in a new tab, so the run sheet stays where it is.
-function ticketLink(text) {
-  const a = document.createElement("a");
-  a.target = "_blank";
-  a.rel = "noopener noreferrer";
-  a.textContent = text;
-  return a;
-}
+// The people in the meeting: the attendees and the note-taker. Shown as buttons under an action
+// that has no owner yet (actionLine).
+const peopleNames = () => uniqueNames([...attendeesToSave(), state.fields.notetaker]);
 
-// "Ticket links..." in the menu opens a box for the tracker address.
-function setupTicketLinks() {
-  const box = $("#ticketBox");
-  const input = $("#ticketUrl");
-  const store = () => {
-    const url = input.value.trim();
-    if (url && !isWebAddress(url)) { toast("The address must start with http:// or https://"); return; }
-    ticketBase = url;
-    try { if (url) localStorage.setItem(TICKET_KEY, url); else localStorage.removeItem(TICKET_KEY); } catch (e) {}
-    box.hidden = true;
-    if (actionsOn) renderOpenActions();
-    toast(url ? "Ticket links are on" : "Ticket links are off");
-  };
-  $("#ticketBtn").onclick = () => {
-    input.value = ticketBase;
-    box.hidden = false;
-    input.focus();
-  };
-  $("#ticketSave").onclick = store;
-  $("#ticketCancel").onclick = () => { box.hidden = true; };
-  input.onkeydown = e => {
-    if (e.key === "Enter") store();
-    if (e.key === "Escape") box.hidden = true;
-  };
-}
-
-/* ---- Action items ---- */
-
-// Every open action needs one owner and a due date; past-due open actions are overdue.
-const isOverdue = row => !!(row.d && !row.done && !row.carried && row.d < today());
-
-// Names offered in each action's Owner box: the attendees, the note-taker and owners already used.
+// Names offered in each action's Owner box: the people in the meeting and owners already used.
 // Any other name can still be typed.
 function fillOwnerList() {
-  const seen = new Set();
-  const names = [...attendeesToSave(), state.fields.notetaker, ...state.actions.map(a => a.o)]
-    .map(n => (n || "").trim())
-    .filter(n => n && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()));
+  const names = uniqueNames([...peopleNames(), ...state.actions.map(a => a.o)]);
   $("#ownerList").replaceChildren(...names.map(n => {
     const o = document.createElement("option");
     o.value = n;
@@ -789,15 +788,50 @@ function showFollows() {
   line.replaceChildren(document.createTextNode("Follow-up of "), link);
 }
 
+// In a follow-up, Plan shows what came out of the meeting it follows: its decisions and action
+// points, read-only, as context for the agenda. Nothing is copied into this meeting.
+async function showLastTime() {
+  const card = $("#lastTime");
+  const id = state.follows;
+  card.hidden = true;
+  if (!id) return;
+  let last;
+  try {
+    last = fromSaved(await api("GET", "/api/meetings/" + encodeURIComponent(id)));
+  } catch (e) {
+    return;   // deleted since: no recap
+  }
+  if (state.follows !== id) return;   // another meeting was opened while this one loaded
+
+  const list = (name, items) => {
+    const block = elem("div", "sum-item");
+    const ul = elem("ul", "parked");
+    ul.append(...items.map(text => elem("li", "", text)));
+    block.append(elem("div", "sum-head", name), items.length ? ul : elem("div", "sum-none", "None recorded."));
+    return block;
+  };
+  const title = r => (r.t || "").trim() || "Untitled item";
+  const decisions = last.agenda.filter(r => r.d.trim()).map(r => `${title(r)}: ${r.d.trim()}`)
+    .concat(String(last.fields.decisions || "").split("\n").map(s => s.trim()).filter(Boolean));
+  const open = last.agenda.filter(leftOpen).map(title);
+  const acts = last.actions.filter(a => a.a && a.a.trim()).map(a => a.a.trim() + " \u00b7 " + ((a.o || "").trim() || "no owner"));
+  const blocks = [list("Decisions", decisions)];
+  if (open.length) blocks.push(list("Left open", open));
+  blocks.push(list("Action points", acts));
+  $("#lastBody").replaceChildren(...blocks);
+  card.hidden = false;
+}
+
 function renderAll() {
-  if (actionsOn) showActions(false);   // a meeting was opened or started: back to the run sheet
   FIELDS.forEach(f => { $("#f-" + f).value = state.fields[f] ?? ""; });
   if (!typeSel.value) typeSel.value = "general";
   showTip();
   showFollows();
+  showLastTime();
   attendeeEditor.render();
   agendaEditor.render();
-  renderParking();
+  parking.render();
+  otherDecisions.render();
   showAgendaSum();
   renderPhases();
   fillOwnerList();
@@ -816,7 +850,6 @@ async function loadList() {
   try {
     meetings = (await api("GET", "/api/meetings" + (q ? "?q=" + encodeURIComponent(q) : ""))) || [];
     meetings.forEach(m => { knownMeetings[m.id] = m; });
-    if (!q) showActionCount();
     renderList(q);
     renderCalendar();
     highlight();
@@ -888,8 +921,6 @@ function listItem(m) {
     const r = readiness(m);
     pill(r.text, r.ready ? "ready" : "prep");
   }
-  if (m.openActions > 0) pill(m.openActions + " open", "open");
-  if (m.overdueActions > 0) pill(m.overdueActions + " overdue", "overdue");
 
   b.append(title, meta);
   b.onclick = () => guard(() => openMeeting(m.id));
@@ -977,164 +1008,13 @@ function highlight() {
   document.querySelectorAll(".item").forEach(b => b.classList.toggle("active", b.dataset.id === state.id));
 }
 
-/* ---- Open actions from every meeting (the Actions button) ---- */
-
-let actionsOn = false;
-let openActions = [];   // rows from GET /api/actions, soonest due first
-
-// Swaps the run sheet for the actions view and back. "#actions" in the address opens it on load.
-function showActions(on) {
-  actionsOn = on;
-  $("#sheet").hidden = on;
-  $("#actionsView").hidden = !on;
-  $("#jumpNav").hidden = on;
-  $("#actionsBtn").setAttribute("aria-pressed", String(on));
-  history.replaceState(null, "", on ? "#actions" : location.pathname + location.search);
-  if (on) {
-    loadActions();
-    window.scrollTo(0, 0);
-  }
-}
-
-// The count on the Actions button, from the unfiltered meeting list.
-function showActionCount() {
-  const sum = key => meetings.reduce((n, m) => n + (m[key] || 0), 0);
-  const open = sum("openActions");
-  const overdue = sum("overdueActions");
-  const pill = $("#actionsCount");
-  pill.hidden = !open;
-  pill.textContent = open;
-  pill.className = "pill " + (overdue ? "overdue" : "prep");
-  pill.title = overdue ? `${overdue} overdue` : "";
-}
-
-async function loadActions() {
-  try {
-    openActions = (await api("GET", "/api/actions")) || [];
-  } catch (e) {
-    openActions = [];
-    toast("Couldn't load the actions: " + e.message);
-  }
-  renderOpenActions();
-}
-
-// Grouped by due date. The filter box matches the action, owner, ticket or meeting.
-function renderOpenActions() {
-  const q = $("#actFilter").value.trim().toLowerCase();
-  const rows = openActions.filter(r => !q || [r.a, r.o, r.t, r.meeting].join("\n").toLowerCase().includes(q));
-  const now = today();
-  const week = new Date();
-  week.setDate(week.getDate() + 7);
-  const soon = isoDay(week);
-  const groups = [
-    ["Overdue", r => r.d && r.d < now],
-    ["Next 7 days", r => r.d >= now && r.d <= soon],
-    ["Later", r => r.d > soon],
-    ["No due date", r => !r.d],
-  ];
-
-  const tbody = $("#openActionRows");
-  tbody.innerHTML = "";
-  groups.forEach(([name, belongs]) => {
-    const items = rows.filter(belongs);
-    if (!items.length) return;
-    const tr = document.createElement("tr");
-    tr.className = "grp";
-    tr.innerHTML = `<th colspan="6">${name} <span class="count">${items.length}</span></th>`;
-    tbody.appendChild(tr);
-    items.forEach(r => tbody.appendChild(openActionRow(r, now)));
-  });
-
-  $("#openActionsTable").hidden = !rows.length;
-  const empty = $("#openActionsEmpty");
-  empty.hidden = rows.length > 0;
-  empty.textContent = openActions.length ? "No open actions match that filter."
-    : "No open actions. Everything is done or carried to a follow-up.";
-}
-
-function openActionRow(r, now) {
-  const tr = document.createElement("tr");
-  tr.classList.toggle("done", !!r.done);
-  const cell = (cls, text) => {
-    const td = document.createElement("td");
-    td.className = cls;
-    td.textContent = text;
-    tr.appendChild(td);
-    return td;
-  };
-
-  const tick = cell("c", "");
-  if (r.id) {
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.checked = !!r.done;
-    box.setAttribute("aria-label", "Done: " + r.a);
-    box.onchange = () => tickAction(r, box, tr);
-    tick.appendChild(box);
-  } else {
-    // Saved before actions had ids (v1.2.0): opening and saving the meeting gives it one.
-    tick.textContent = "\u2013";
-    tick.title = "Open the meeting and save it, then tick it off here";
-  }
-
-  cell("a", r.a);
-  cell(r.o ? "" : "warn", r.o || "No owner");
-  cell("due " + (!r.d ? "warn" : r.d < now ? "overdue" : ""), r.d || "No date");
-  const ticket = cell("", r.t);
-  const href = ticketHref(r.t);
-  if (href) {
-    const a = ticketLink(r.t);
-    a.href = href;
-    ticket.replaceChildren(a);
-  }
-
-  const from = cell("", "");
-  const link = document.createElement("button");
-  link.className = "link";
-  link.textContent = r.meeting || "Untitled meeting";
-  link.onclick = () => guard(() => openMeeting(r.meetingId));
-  from.appendChild(link);
-  if (r.meetingDate) {
-    const when = document.createElement("span");
-    when.className = "when";
-    when.textContent = r.meetingDate;
-    from.appendChild(when);
-  }
-  return tr;
-}
-
-// Ticks one action in its meeting file. The row stays (struck through) so it can be unticked.
-async function tickAction(r, box, tr) {
-  const here = r.meetingId === state.id;
-  if (here && dirty) {
-    box.checked = !box.checked;
-    toast("That action is in the meeting you have open. Save it first.");
-    return;
-  }
-  try {
-    await api("PUT", `/api/meetings/${r.meetingId}/actions/${encodeURIComponent(r.id)}`, { done: box.checked });
-    r.done = box.checked;
-    tr.classList.toggle("done", r.done);
-    if (here) {
-      const mine = state.actions.find(a => a.id === r.id);
-      if (mine) mine.done = r.done;
-      showItemActions();
-      showSummary();
-    }
-    loadList();
-  } catch (e) {
-    box.checked = !box.checked;
-    toast("Couldn't update that action: " + e.message);
-  }
-}
-
 /* ---- Commands: open, save, new, follow-up, delete ---- */
 
 // Brings a saved meeting (or a stored draft) up to the current format.
 function fromSaved(m) {
   const fields = Object.assign({}, m.fields);
   const agenda = Array.isArray(m.agenda)
-    ? m.agenda.map(r => ({ id: r.id, t: String(r.t || ""), m: +r.m > 0 ? +r.m : null, d: String(r.d || ""), n: String(r.n || "") }))
+    ? m.agenda.map(r => ({ id: r.id, t: String(r.t || ""), m: +r.m > 0 ? +r.m : null, d: String(r.d || ""), n: String(r.n || ""), nd: !!r.nd }))
     : agendaFromText(fields.agenda);   // before v1.3.0: free text in fields.agenda
   agenda.forEach(r => { if (!r.id) r.id = newActionId(); });   // before v1.17.0: no agenda item ids
   delete fields.agenda;
@@ -1169,7 +1049,9 @@ async function openMeeting(id) {
   }
 }
 
-async function save() {
+// The server refuses (409) to save over a version that was saved somewhere else after this page
+// opened the meeting; the page then asks, and save(true) overwrites it.
+async function save(force) {
   const body = {
     fields: state.fields,
     checks: state.checks,
@@ -1177,6 +1059,7 @@ async function save() {
     attendees: attendeesToSave(),
     actions: state.actions.filter(a => a.a || a.o || a.d || a.t),   // drop empty rows
     follows: state.follows || undefined,
+    savedAt: state.id && force !== true ? state.savedAt : undefined,   // the version this page has
   };
   try {
     const m = state.id
@@ -1190,7 +1073,12 @@ async function save() {
     toast("Saved");
     loadList();
   } catch (e) {
-    toast("Save failed: " + e.message);
+    if (e.status === 409) {
+      ask("This meeting was saved somewhere else after you opened it here. Overwrite that version with this one?",
+        "Overwrite", () => save(true));
+    } else {
+      toast("Save failed: " + e.message);
+    }
   }
 }
 
@@ -1203,23 +1091,54 @@ function newMeeting(date) {
   $("#f-title").focus();
 }
 
-// New unsaved meeting with the same brief, today's date and the open actions carried over.
-// When it's saved, the server marks those actions "carried" in this meeting (see MeetingStore.psm1).
+// New unsaved meeting with the same brief, attendees and agenda, and today's date, linked back to
+// this one. Actions are not copied: following them up is the tracker's job.
 function followUp() {
   const fields = { date: today() };
   FOLLOW_UP_FIELDS.forEach(k => { if (state.fields[k]) fields[k] = state.fields[k]; });
-  // Carried actions keep their id but not their agenda item: the follow-up's items are new ones.
-  const open = state.actions.filter(a => a.a && !a.done && !a.carried).map(a => {
-    const copy = Object.assign({}, a);
-    delete copy.g;
-    return copy;
-  });
   const agenda = state.agenda.map(r => ({ id: newActionId(), t: r.t, m: r.m }));   // the items, not what was recorded on them
   const attendees = state.attendees.slice();
-  state = { id: null, follows: state.id, fields, checks: {}, agenda, attendees, actions: open.length ? open : [blankAction()] };
+  state = { id: null, follows: state.id, fields, checks: {}, agenda, attendees, actions: [blankAction()] };
   renderAll();
   markDirty();
-  toast(open.length ? `Carried over ${open.length} open action${open.length > 1 ? "s" : ""}` : "Brief copied to a new meeting");
+  toast("Brief and agenda copied to a new meeting");
+}
+
+// "Repeat weekly..." in the menu: plans the open meeting again, one copy per week for the next N
+// weeks. Each copy is its own meeting (same brief, start time, attendees and agenda; nothing that
+// was recorded), so one can be moved or changed without touching the others.
+function setupRepeat() {
+  const box = $("#repeatBox");
+  const count = $("#repeatCount");
+  $("#repeatBtn").onclick = () => {
+    if (!state.id || dirty) { toast("Save the meeting first."); return; }
+    if (!state.fields.date) { toast("Give the meeting a date first."); return; }
+    box.hidden = false;
+    count.focus();
+  };
+  $("#repeatCancel").onclick = () => { box.hidden = true; };
+  $("#repeatGo").onclick = async () => {
+    const weeks = Math.min(12, Math.max(1, Math.round(+count.value) || 1));
+    const [y, mo, d] = state.fields.date.split("-").map(Number);
+    const fields = {};
+    [...FOLLOW_UP_FIELDS, "time"].forEach(k => { if (state.fields[k]) fields[k] = state.fields[k]; });
+    box.hidden = true;
+    try {
+      for (let k = 1; k <= weeks; k++) {
+        await api("POST", "/api/meetings", {
+          fields: Object.assign({}, fields, { date: isoDay(new Date(y, mo - 1, d + 7 * k)) }),
+          checks: {},
+          agenda: agendaToSave().map(r => ({ id: newActionId(), t: r.t, m: r.m })),
+          attendees: attendeesToSave(),
+          actions: [],
+        });
+      }
+      toast(`Planned ${weeks} more meeting${weeks > 1 ? "s" : ""}, one a week`);
+    } catch (e) {
+      toast("Couldn't plan the meetings: " + e.message);
+    }
+    loadList();
+  };
 }
 
 async function deleteMeeting() {
@@ -1229,7 +1148,7 @@ async function deleteMeeting() {
     markClean();
     renderAll();
     loadList();
-    toast("Meeting deleted");
+    toast("Meeting deleted. Its file is in the deleted folder.");
   } catch (e) {
     toast("Delete failed: " + e.message);
   }
@@ -1237,8 +1156,7 @@ async function deleteMeeting() {
 
 /* ---- Copy notes (summary for Slack or email; as Markdown for a wiki, Confluence or GitHub) ---- */
 
-// Plain text by default. With md, the same notes as Markdown: headings, bold labels, and tickets
-// as links where there is something to link to (see ticketHref).
+// Plain text by default. With md, the same notes as Markdown: headings and bold labels.
 function notes(md) {
   const f = state.fields;
   const lines = s => (s || "").split("\n").map(x => x.trim()).filter(Boolean);
@@ -1253,9 +1171,10 @@ function notes(md) {
   const people = attendeesToSave();
   if (people.length) o += `${label("Attendees")} ${people.join(", ")}\n${gap}`;
 
-  // Decisions made on agenda items come first, each with its item, then the ones from the Decisions box.
+  // Decisions made on agenda items come first, each with its item (an item marked left open says
+  // so), then the ones that belong to no item.
   const items = agendaToSave();
-  const decisions = items.filter(r => r.d).map(r => `${r.t}: ${r.d}`).concat(lines(f.decisions));
+  const decisions = items.filter(r => r.d || r.nd).map(r => `${r.t}: ${r.d || "left open, no decision made"}`).concat(lines(f.decisions));
   o += section("Decisions", decisions.length ? bullets(decisions) : "- None recorded");
 
   const acts = state.actions.filter(a => a.a && a.a.trim());
@@ -1263,11 +1182,9 @@ function notes(md) {
     const text = a.done ? "done" : a.carried ? "carried to follow-up" : "";
     return !text ? "" : md ? `**${text[0].toUpperCase()}${text.slice(1)}:** ` : `[${text}] `;
   };
-  const ticket = a => {
-    const href = md ? ticketHref(a.t) : "";
-    return !a.t ? "" : ", " + (href && href !== a.t.trim() ? `[${a.t.trim()}](${href})` : a.t);
-  };
-  const actText = a => `${status(a)}${a.a} (Owner: ${a.o || "UNASSIGNED"}, Due: ${a.d || "TBD"}${ticket(a)})`;
+  // A due date, a ticket and the done / carried status only exist in files from before v1.23.0.
+  const older = a => [a.d ? "Due: " + a.d : "", (a.t || "").trim()].filter(Boolean).map(x => ", " + x).join("");
+  const actText = a => `${status(a)}${a.a} (Owner: ${a.o || "UNASSIGNED"}${older(a)})`;
   // Under their agenda item where they have one (then "Other"); a plain list when none do.
   const groups = items.map(r => [r.t, acts.filter(a => a.g === r.id)]).filter(([, list]) => list.length);
   const loose = acts.filter(a => !items.some(r => r.id === a.g));
@@ -1381,7 +1298,7 @@ function closeHelp() {
   });
 }
 
-/* ---- Backup, restore, CSV export ("..." menu) ---- */
+/* ---- Backup and restore ("..." menu) ---- */
 
 // Downloads go through a link with "download", so the page isn't unloaded (no unsaved-changes prompt).
 function download(url) {
@@ -1431,10 +1348,6 @@ function setupMenu() {
 function setupTheme() {
   const btn = $("#themeBtn");
   const list = $("#themeList");
-  const show = () => {
-    btn.textContent = "Theme: " + THEMES.find(t => t[0] === themeChoice)[1];
-    list.querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.theme === themeChoice)));
-  };
   THEMES.forEach(([key, name]) => {
     const b = document.createElement("button");
     b.setAttribute("role", "menuitemradio");
@@ -1442,10 +1355,8 @@ function setupTheme() {
     b.textContent = name;
     b.onclick = e => {
       e.stopPropagation();
-      themeChoice = key;
-      try { if (key) localStorage.setItem(THEME_KEY, key); else localStorage.removeItem(THEME_KEY); } catch (e) {}
-      applyTheme();
-      show();
+      setTheme(key);
+      pushSettings();
     };
     list.append(b);
   });
@@ -1454,11 +1365,39 @@ function setupTheme() {
     list.hidden = !list.hidden;
     btn.setAttribute("aria-expanded", String(!list.hidden));
   };
-  show();
+  setTheme(themeChoice);
+}
+
+// Switches to a theme, remembers it in this browser and ticks it in the menu.
+function setTheme(key) {
+  themeChoice = key;
+  try { if (key) localStorage.setItem(THEME_KEY, key); else localStorage.removeItem(THEME_KEY); } catch (e) {}
+  applyTheme();
+  $("#themeBtn").textContent = "Theme: " + THEMES.find(t => t[0] === key)[1];
+  $("#themeList").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.theme === key)));
+}
+
+/* ---- Settings kept with the meetings ----
+   The theme and the sidebar choice live in this browser (localStorage), so the page can draw them
+   right away. A copy is kept by the server (settings\page.json in the data folder), so another
+   browser, or the app on another port, starts with the same choices. */
+
+function pushSettings() {
+  api("PUT", "/api/settings", { theme: themeChoice, sideOff: $("#app").classList.contains("side-off") }).catch(() => {});
+}
+
+// On load: take the stored choices where they differ from this browser's. With nothing stored
+// yet, this browser's choices become the stored ones.
+async function pullSettings() {
+  let s = null;
+  try { s = await api("GET", "/api/settings"); } catch (e) { return; }
+  if (!s || typeof s.theme !== "string") { pushSettings(); return; }
+  if (s.theme !== themeChoice && THEMES.some(t => t[0] === s.theme)) setTheme(s.theme);
+  if (!!s.sideOff !== $("#app").classList.contains("side-off")) setSidebar(!!s.sideOff);
 }
 
 // Hiding the sidebar gives the run sheet the full width during a meeting.
-// Remembered in this browser only; the page works the same without it.
+// The page works the same without it.
 const SIDE_KEY = "runsheet-side-off";
 
 function setSidebar(off) {
@@ -1473,7 +1412,10 @@ function setupSidebar() {
   let off = false;
   try { off = localStorage.getItem(SIDE_KEY) === "1"; } catch (e) {}
   setSidebar(off);
-  $("#sideBtn").onclick = () => setSidebar(!$("#app").classList.contains("side-off"));
+  $("#sideBtn").onclick = () => {
+    setSidebar(!$("#app").classList.contains("side-off"));
+    pushSettings();
+  };
 }
 
 /* ---- Wire up events and start ---- */
@@ -1511,23 +1453,20 @@ $("#search").addEventListener("input", () => {
 $("#saveBtn").onclick = save;
 $("#newBtn").onclick = () => guard(newMeeting);
 $("#followBtn").onclick = () => guard(followUp);
-$("#deleteBtn").onclick = () => ask(`Delete "${state.fields.title || "Untitled meeting"}" permanently?`, "Delete", deleteMeeting);
+$("#deleteBtn").onclick = () => ask(`Delete "${state.fields.title || "Untitled meeting"}"? Its file moves to the deleted folder next to your meetings.`, "Delete", deleteMeeting);
 $("#addAgenda").onclick = () => agendaEditor.add(state.agenda.length);
 $("#addAttendee").onclick = () => attendeeEditor.add(state.attendees.length);
-$("#addParking").onclick = () => parkingEditor.add(parked.length);
-$("#actionsBtn").onclick = () => showActions(!actionsOn);
-$("#actionsBack").onclick = () => showActions(false);
-$("#actFilter").addEventListener("input", renderOpenActions);
+$("#addParking").onclick = parking.add;
+$("#addDecision").onclick = otherDecisions.add;
+$("#printBtn").onclick = () => { setPhase("wrap"); window.print(); };
 $("#copyBtn").onclick = $("#copyStripBtn").onclick = () => copyNotes(false);
 $("#copyMdBtn").onclick = $("#copyMdBtn2").onclick = () => copyNotes(true);
 $("#followBtn2").onclick = () => guard(followUp);
 document.querySelectorAll("#phaseTabs button").forEach(b => b.onclick = () => {
-  if (actionsOn) showActions(false);
   setPhase(b.dataset.phase);
   window.scrollTo(0, 0);
 });
 $("#backupBtn").onclick = () => download("/api/backup");
-$("#csvBtn").onclick = () => download("/api/actions.csv");
 $("#restoreBtn").onclick = () => $("#restoreFile").click();
 $("#restoreFile").onchange = e => {
   const file = e.target.files[0];
@@ -1553,9 +1492,11 @@ setupMenu();
 setupTheme();
 setupSidebar();
 setupCalendar();
-setupTicketLinks();
+setupRepeat();
+// The ticket link feature is gone (v1.23.0); don't leave its setting behind in the browser.
+try { localStorage.removeItem("runsheet-ticket-url"); } catch (e) {}
+pullSettings();
 fillTypeOptions();
 renderAll();
 loadList();
 offerDraft();
-if (location.hash === "#actions") showActions(true);

@@ -58,6 +58,14 @@ $store  = [MeetingStore]::new($DataDir)
 $web    = [WebRoot]::new((Join-Path $scriptDir 'web'))
 $server = [RunSheetServer]::new($Port, $store, $web)
 
+# A backup of every meeting on each start; the newest 10 are kept (meetings\backups).
+$backup = ''
+try {
+    $backup = $store.AutoBackup(10)
+} catch {
+    Write-Host "  Couldn't write the startup backup: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
 try {
     $server.Start()
 } catch {
@@ -69,6 +77,7 @@ try {
 Write-Host ''
 Write-Host "  Meeting Run Sheet is running at $($server.Prefix)" -ForegroundColor Cyan
 Write-Host "  Meetings are saved in: $($store.Root)"
+if ($backup) { Write-Host "  Startup backup: $backup" }
 Write-Host '  Press Ctrl+C to stop.'
 Write-Host ''
 
