@@ -66,6 +66,7 @@
             <hr>
             <button role="menuitem" id="backupBtn" title="Every saved meeting in one zip file">Download backup (.zip)</button>
             <button role="menuitem" id="restoreBtn" title="Adds meetings from a backup zip; never overwrites one you have">Restore from backup...</button>
+            <button role="menuitem" id="binBtn" title="Put back a meeting you deleted, or meetings from a backup made when the app started">Deleted meetings and backups...</button>
             <hr>
             <button role="menuitem" id="themeBtn" aria-expanded="false" aria-controls="themeList" title="System follows your Windows or browser setting">Theme: System</button>
             <!-- One button per theme (setupTheme in app.js, from THEMES in theme.js) -->
@@ -89,6 +90,15 @@
       <p class="hint">Each copy gets the brief, start time, attendees and agenda, and can be changed on its own.</p>
       <div class="toolbar"><button class="primary" id="repeatGo">Plan them</button><button id="repeatCancel">Cancel</button></div>
     </div>
+    <!-- "Deleted meetings and backups..." in the menu (setupBin in app.js) -->
+    <div class="card bin-box" id="binBox" hidden>
+      <div class="bin-head"><span class="card-title">Deleted meetings and backups</span><button id="binClose">Close</button></div>
+      <div class="label">Deleted meetings</div>
+      <div class="bin-list" id="binDeleted"></div>
+      <div class="label">Backups made when the app started</div>
+      <p class="hint">Restoring adds the meetings that are missing here. It never overwrites one you have.</p>
+      <div class="bin-list" id="binBackups"></div>
+    </div>
     <div class="card" id="fallbackBox" hidden>
       <div class="label label-above">Copy didn't go through. Select this text and copy it.</div>
       <textarea id="copyFallback" readonly></textarea>
@@ -102,6 +112,9 @@
          decisions lists).
          data-help on a label becomes a (?) tooltip next to it (see setupHelp in app.js). -->
     <div class="sheet" id="sheet" data-phase="plan">
+    <!-- Title, date and attendees: only on paper, above the outcome strip (showSummary in app.js,
+         @media print in styles.css) -->
+    <div class="print-head" id="printHead"></div>
     <!-- Is the meeting ready? Filled in by showStrips() in app.js -->
     <section class="card strip" data-in="plan" aria-label="Readiness">
       <span class="ready-item" id="rGoal"></span><span class="ready-item" id="rAgenda"></span><span class="ready-item" id="rPrep"></span>
@@ -117,6 +130,7 @@
     <section class="card hero" data-in="plan" aria-labelledby="briefH">
       <h2 id="briefH" class="sr-only">The brief</h2>
       <p class="follows" id="followsLine" hidden></p>
+      <p class="follows" id="seriesLine" hidden></p>
       <input id="f-title" class="title-input" type="text" placeholder="Untitled meeting" aria-label="Meeting title">
       <div class="field goal">
         <label class="label" for="f-goal" data-help="A decision or an output, not &quot;discuss X&quot;. If you can't name one, it may not need a meeting.">We leave this meeting with...</label>
@@ -159,8 +173,6 @@
            (showSummary in app.js) -->
       <section class="card" data-in="wrap" aria-labelledby="sumH">
         <h2 id="sumH" class="card-title">Summary</h2>
-        <!-- Title, date and attendees: only on paper (see @media print in styles.css) -->
-        <div class="print-head" id="printHead"></div>
         <div class="summary" id="summary"></div>
       </section>
 

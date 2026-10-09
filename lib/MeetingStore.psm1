@@ -4,7 +4,9 @@
 #   $store.List('crash')                       # summaries, newest first
 #   $store.Exists($id); $store.ReadRaw($id)
 #   $store.Create($json); $store.Update($json, $id); $store.Remove($id)
+#   $store.ListDeleted(); $store.Restore($id)  # put a deleted meeting back
 #   $store.BackupZip(); $store.RestoreZip($bytes); $store.AutoBackup(10)
+#   $store.ListBackups(); $store.RestoreBackup($name)
 #   $store.ReadSettings(); $store.WriteSettings($json)
 #
 # Inside the data folder: deleted\ (meetings removed with Remove), backups\ (AutoBackup zips)
@@ -91,7 +93,101 @@ class MeetingStore {
         [System.IO.File]::Move($this.PathOf($id), $to)
     }
 
-    # Summaries for the sidebar: {id,title,date,time,type,savedAt,hasGoal,agendaCount,beforeChecks},
+    # ---- Bringing meetings back ----
+
+    hidden [string] DeletedPath([string] $id) {
+        return [System.IO.Path]::Combine($this.Root, 'deleted', "$id.json")
+    }
+
+    [bool] IsDeleted([string] $id) {
+        return [System.IO.File]::Exists($this.DeletedPath($id))
+    }
+
+    # The meetings in the "deleted" folder as {id,title,date,time,type}, newest first. One whose id
+    # is a meeting again (it came back from a backup) is left out: there is nothing to put back.
+    [object[]] ListDeleted() {
+        $items = New-Object System.Collections.Generic.List[object]
+        $bin = [System.IO.Path]::Combine($this.Root, 'deleted')
+        if (-not [System.IO.Directory]::Exists($bin)) { return @() }
+        foreach ($file in [System.IO.Directory]::GetFiles($bin, '*.json')) {
+            $id = [System.IO.Path]::GetFileNameWithoutExtension($file)
+            if (-not [MeetingStore]::IsValidId($id) -or $this.Exists($id)) { continue }
+            $m = $null
+            try { $m = [System.IO.File]::ReadAllText($file, $this.Utf8) | ConvertFrom-Json } catch { }
+            if (-not $m) { continue }   # skip unreadable files
+            $items.Add([pscustomobject]@{
+                id    = $id
+                title = $m.fields.title
+                date  = [MeetingStore]::DayText($m.fields.date)
+                time  = [string]$m.fields.time
+                type  = $m.fields.type
+            })
+        }
+        return @($items | Sort-Object -Property @{ Expression = { "$($_.date)" }; Descending = $true },
+                                                @{ Expression = { "$($_.time)" }; Descending = $true })
+    }
+
+    # Moves a deleted meeting back, as it was. Returns $false, and moves nothing, when a meeting
+    # with that id is here. Callers check IsDeleted first.
+    [bool] Restore([string] $id) {
+        if ($this.Exists($id)) { return $false }
+        [System.IO.File]::Move($this.DeletedPath($id), $this.PathOf($id))
+        return $true
+    }
+
+    # Backup names come from URLs, so callers must check them with this first.
+    static [bool] IsBackupName([string] $name) {
+        return $name -match '^meetings-\d{8}-\d{6}\.zip$'
+    }
+
+    hidden [string] BackupPath([string] $name) {
+        return [System.IO.Path]::Combine($this.Root, 'backups', $name)
+    }
+
+    [bool] HasBackup([string] $name) {
+        return [System.IO.File]::Exists($this.BackupPath($name))
+    }
+
+    # The startup backups as {name, at, count}, newest first: "at" is when it was made
+    # ("yyyy-MM-dd HH:mm", from the name) and "count" the number of files in the zip.
+    [object[]] ListBackups() {
+        Add-Type -AssemblyName System.IO.Compression
+        $items = New-Object System.Collections.Generic.List[object]
+        $dir = [System.IO.Path]::Combine($this.Root, 'backups')
+        if (-not [System.IO.Directory]::Exists($dir)) { return @() }
+        foreach ($file in @([System.IO.Directory]::GetFiles($dir, 'meetings-*.zip') | Sort-Object -Descending)) {
+            $name = [System.IO.Path]::GetFileName($file)
+            $m = [regex]::Match($name, '^meetings-(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)\d\d\.zip$')
+            if (-not $m.Success) { continue }
+            $count = -1
+            $zip = $null   # 5.1 classes reject a variable that is only assigned inside try
+            $stream = [System.IO.File]::OpenRead($file)
+            try {
+                $zip = New-Object System.IO.Compression.ZipArchive($stream, 'Read', $true)
+                $count = $zip.Entries.Count
+            } catch {
+            } finally {
+                if ($zip) { $zip.Dispose() }
+                $stream.Dispose()
+            }
+            if ($count -lt 0) { continue }   # not a readable zip
+            $g = $m.Groups
+            $items.Add([pscustomobject]@{
+                name  = $name
+                at    = "$($g[1].Value)-$($g[2].Value)-$($g[3].Value) $($g[4].Value):$($g[5].Value)"
+                count = $count
+            })
+        }
+        return $items.ToArray()
+    }
+
+    # Adds the meetings in a startup backup that are missing here (see RestoreZip).
+    # Callers check IsBackupName and HasBackup first.
+    [object] RestoreBackup([string] $name) {
+        return $this.RestoreZip([System.IO.File]::ReadAllBytes($this.BackupPath($name)))
+    }
+
+    # Summaries for the sidebar: {id,title,date,time,type,savedAt,series,hasGoal,agendaCount,beforeChecks},
     # newest first (by date, then start time).
     # $query is a case-insensitive substring match on the raw file text.
     [object[]] List([string] $query) {
@@ -113,6 +209,8 @@ class MeetingStore {
                 time           = [string]$m.fields.time
                 type           = $m.fields.type
                 savedAt        = $m.savedAt
+                # Shared by the meetings planned together with Repeat weekly; '' for any other.
+                series         = [string]$m.series
                 # For the "Ready / Needs ..." badge on upcoming meetings (see readiness() in app.js).
                 hasGoal        = [bool]([string]$m.fields.goal).Trim()
                 agendaCount    = $agendaCount

@@ -96,6 +96,23 @@
     await wait(400);
     check("Overwrite then saves it", !dirty && (await saved(id)).fields.title === "Mine" && (await saved(id)).agenda.length === 2);
 
+    // Autosave: in Run, a change to a saved meeting is saved without pressing Save.
+    type($("#park-0"), "Remapping");
+    check("a change outside Run plans no autosave", dirty && autoTimer === null);
+    setPhase("run");
+    type($("#park-0"), "Remapping, autosaved");
+    check("a change in Run plans an autosave", dirty && autoTimer !== null);
+    await autosave();
+    check("autosave saves without being asked", !dirty && autoTimer === null && $("#confirmBox").hidden
+      && (await saved(id)).fields.parking === "Remapping, autosaved");
+    await api("PUT", "/api/meetings/" + id, Object.assign(await saved(id), { savedAt: undefined }));
+    type($("#park-0"), "Remapping, again");
+    await autosave();
+    check("an autosave over a newer version pauses and does not ask", dirty && autoOff && $("#confirmBox").hidden
+      && (await saved(id)).fields.parking === "Remapping, autosaved");
+    await save(true);
+    check("Save after that turns autosave back on", !dirty && !autoOff && (await saved(id)).fields.parking === "Remapping, again");
+
     // Follow-up: the brief and agenda, no actions, and what came out of last time.
     followUp();
     await wait(400);
@@ -114,12 +131,17 @@
     check("Repeat weekly opens its box", !$("#repeatBox").hidden);
     type($("#repeatCount"), "2");
     $("#repeatGo").click();
-    await wait(800);
+    await wait(1500);
     const [y, mo, d] = state.fields.date.split("-").map(Number);
     const copies = (await api("GET", "/api/meetings")).filter(m => m.title === "Mine" && m.id !== id);
     check("Repeat weekly plans one copy a week", copies.length === 2
       && copies.map(m => m.date).sort().join() === [7, 14].map(n => isoDay(new Date(y, mo - 1, d + n))).join()
       && copies.every(m => m.agendaCount === 2));
+    check("the repeated meetings share a series with the first one", state.series === id && (await saved(id)).series === id
+      && copies.every(m => m.series === id));
+    const series = $("#seriesLine");
+    check("the brief shows the place in the series and the next meeting", !series.hidden && series.textContent.includes("1 of 3")
+      && series.textContent.includes("Next: " + isoDay(new Date(y, mo - 1, d + 7))) && !series.textContent.includes("Previous"));
 
     // Settings follow the sidebar and theme choices.
     $("#sideBtn").click();
@@ -131,6 +153,17 @@
     // Delete.
     await deleteMeeting();
     check("a deleted meeting leaves the list", !state.id && !(await api("GET", "/api/meetings")).some(m => m.id === id));
+
+    // Deleted meetings and backups: put it back.
+    $("#binBtn").click();
+    await wait(500);
+    const back = [...document.querySelectorAll("#binDeleted .bin-row")].find(r => r.textContent.includes("Mine"));
+    check("a deleted meeting is listed with a Put back button", !$("#binBox").hidden && !!back && back.querySelector("button").textContent === "Put back");
+    check("the startup backup is listed", document.querySelectorAll("#binBackups .bin-row").length === 1);
+    back.querySelector("button").click();
+    await wait(800);
+    check("Put back returns the meeting as it was", (await saved(id)).fields.parking === "Remapping, again"
+      && !document.querySelector("#binDeleted .bin-row") && !!document.querySelector(`#list .item[data-id="${id}"]`));
   } catch (e) {
     out.push("FAIL selftest stopped early: " + String(e && e.message).replace(/[&<>"']/g, " "));
   }

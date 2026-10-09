@@ -340,6 +340,10 @@ table.row-table{min-width:0}
 .tag.open{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
 .repeat-box{display:flex;flex-direction:column;gap:8px}
 .repeat-box input{max-width:90px}
+.bin-box{display:flex;flex-direction:column;gap:8px}
+.bin-head,.bin-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bin-list{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.bin-row span{overflow-wrap:anywhere}
 
 /* Summary card in Wrap up (showSummary in app.js) */
 .summary{display:flex;flex-direction:column}
@@ -447,11 +451,11 @@ ul.checks input:checked + span .t{text-decoration:line-through;color:var(--faint
     color-scheme:light;
   }
   body{padding:0}
-  .side-col,.topbar,.timer,.jump,.toast,.confirm,.col-side,.strip button,#fallbackBox,#repeatBox{display:none!important}
+  .side-col,.topbar,.timer,.jump,.toast,.confirm,.col-side,.strip button,#fallbackBox,#repeatBox,#binBox{display:none!important}
   .app,.app.side-off{display:block;max-width:none}
   .card{border:0;box-shadow:none;padding:0;background:none}
   .strip{padding:0 0 12px}
-  .print-head{display:block;margin-bottom:14px}
+  .print-head{display:block}
   .print-head h1{margin:0 0 4px;font-size:22px}
   .print-head p{margin:0;color:var(--muted)}
   .print-head p:empty,#sumH{display:none}

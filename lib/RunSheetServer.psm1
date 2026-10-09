@@ -18,6 +18,10 @@ using module .\WebRoot.psm1
 #   PUT    /api/settings       store page settings
 #   GET    /api/backup         zip of every meeting file (download)
 #   POST   /api/backup         restore: body is a backup zip; adds missing meetings, never overwrites
+#   GET    /api/deleted        deleted meetings {id,title,date,time,type}
+#   POST   /api/deleted/{id}   put a deleted meeting back; 409 if that id is a meeting again
+#   GET    /api/backups        startup backups {name,at,count}, newest first
+#   POST   /api/backups/{name} restore from a startup backup (as POST /api/backup)
 # Request bodies are capped (MaxBody, MaxBackup); a bigger one gets 413.
 
 # Thrown by ReadBytes when a request body is over its limit; Handle answers it with 413.
@@ -134,6 +138,35 @@ class RunSheetServer {
                 'GET' { $this.SendRaw($ctx, 200, $this.Store.ReadSettings()); return }
                 'PUT' { $this.SendRaw($ctx, 200, $this.Store.WriteSettings($this.ReadBody($req))); return }
             }
+        }
+
+        if ($path -eq '/api/deleted' -and $method -eq 'GET') {
+            $this.SendJson($ctx, @($this.Store.ListDeleted()), 200); return
+        }
+        $m = [regex]::Match($path, '^/api/deleted/([^/]+)$')
+        if ($m.Success -and $method -eq 'POST' -and [MeetingStore]::IsValidId($m.Groups[1].Value)) {
+            $id = $m.Groups[1].Value
+            if (-not $this.Store.IsDeleted($id)) {
+                $this.SendJson($ctx, @{ error = 'Deleted meeting not found' }, 404); return
+            }
+            if (-not $this.Store.Restore($id)) {
+                $this.SendJson($ctx, @{ error = 'A meeting with that id is already here' }, 409); return
+            }
+            $this.SendJson($ctx, @{ restored = $id }, 200); return
+        }
+
+        if ($path -eq '/api/backups' -and $method -eq 'GET') {
+            $this.SendJson($ctx, @($this.Store.ListBackups()), 200); return
+        }
+        $m = [regex]::Match($path, '^/api/backups/([^/]+)$')
+        if ($m.Success -and $method -eq 'POST' -and [MeetingStore]::IsBackupName($m.Groups[1].Value)) {
+            $name = $m.Groups[1].Value
+            if (-not $this.Store.HasBackup($name)) {
+                $this.SendJson($ctx, @{ error = 'Backup not found' }, 404); return
+            }
+            $result = $this.Store.RestoreBackup($name)
+            if ($null -eq $result) { $this.SendJson($ctx, @{ error = "That file isn't a backup zip" }, 400); return }
+            $this.SendJson($ctx, $result, 200); return
         }
 
         $m = [regex]::Match($path, '^/api/meetings/([^/]+)$')

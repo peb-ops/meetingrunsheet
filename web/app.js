@@ -28,7 +28,7 @@ const newActionId = () => Date.now().toString(36) + Math.random().toString(36).s
 // done) belongs in a tracker; files from before v1.23.0 keep those values (d, t, done, carried).
 const blankAction = () => ({ id: newActionId(), a: "", o: "" });
 const blankAgendaRow = () => ({ id: newActionId(), t: "", m: null });
-const blank = () => ({ id: null, follows: null, fields: { type: "general", date: today() }, checks: {},
+const blank = () => ({ id: null, follows: null, series: null, fields: { type: "general", date: today() }, checks: {},
                        agenda: [blankAgendaRow()], attendees: [""], actions: [blankAction()] });
 const typeName = key => (TYPES[key] || TYPES.general)[0];
 
@@ -37,7 +37,10 @@ let dirty = false;
 let pending = null;     // callback for "yes" on the inline confirm bar
 let pendingNo = null;   // optional callback for "no"
 let listTimer = null;
-const knownMeetings = {};   // id -> summary from the last list load, for "Follow-up of ..." links
+const knownMeetings = {};   // id -> summary from the last list loads, for the "Follow-up of ..." and series links
+let edits = 0;          // counts changes, so a save can tell whether more was typed while it was on its way
+let autoTimer = null;   // the autosave that is waiting to run (see autosave)
+let autoOff = false;    // an autosave was refused (saved somewhere else): wait for Save to be pressed
 
 /* ---- Server API ---- */
 
@@ -88,16 +91,40 @@ function setStatus() {
 
 function markDirty() {
   dirty = true;
+  edits++;
   setStatus();
   showStrips();
   if (phase === "wrap") showSummary();
   storeDraft();
+  planAutosave();
 }
 
 // Call after the page matches what's saved (or the user chose to throw changes away).
 function markClean() {
   dirty = false;
+  clearTimeout(autoTimer);
+  autoTimer = null;
+  autoOff = false;
   clearDraft();
+}
+
+/* ---- Autosave while the meeting runs ----
+   In Run, a meeting that has been saved before is saved again 20 seconds after the first unsaved
+   change, so the notes of a meeting in progress are never far behind the file. Quietly: no toast,
+   and no question when the server refuses because the meeting was saved somewhere else (it pauses
+   until Save is pressed, which does ask). A meeting that was never saved is not autosaved: it has
+   no file yet, and the draft covers it. */
+const AUTOSAVE_MS = 20000;
+
+function planAutosave() {
+  if (autoTimer || autoOff || phase !== "run" || !state.id) return;
+  autoTimer = setTimeout(autosave, AUTOSAVE_MS);
+}
+
+async function autosave() {
+  clearTimeout(autoTimer);
+  autoTimer = null;
+  if (dirty && state.id && !autoOff) await save("auto");
 }
 
 /* ---- Phases: Plan / Run / Wrap up ---- */
@@ -526,7 +553,8 @@ function showSummary() {
   }
   if (!blocks.length) blocks.push(el("div", "sum-none", "Nothing recorded yet."));
 
-  // Only printed (styles.css): what the meeting was, since the brief isn't on the Wrap up page.
+  // Only printed (styles.css), at the top of the page: what the meeting was, since the brief
+  // isn't on the Wrap up page.
   const f = state.fields;
   const people = attendeesToSave();
   $("#printHead").replaceChildren(
@@ -788,6 +816,28 @@ function showFollows() {
   line.replaceChildren(document.createTextNode("Follow-up of "), link);
 }
 
+// "Weekly series, 2 of 5" under the brief heading, with links to the meeting before and after.
+// The meetings planned together with Repeat weekly share a "series" id (setupRepeat); the line
+// shows while at least two of them are still here.
+function showSeries() {
+  const line = $("#seriesLine");
+  const key = m => `${m.date || ""} ${m.time || ""}`;
+  const all = Object.values(knownMeetings).filter(m => state.series && m.series === state.series)
+    .sort((a, b) => key(a).localeCompare(key(b)));
+  const at = all.findIndex(m => m.id === state.id);
+  line.hidden = at < 0 || all.length < 2;
+  if (line.hidden) return;
+  const parts = [`Weekly series, ${at + 1} of ${all.length}`];
+  const link = (m, label) => {
+    const b = elem("button", "link", `${label}: ${m.date || "no date"}`);
+    b.onclick = () => guard(() => openMeeting(m.id));
+    parts.push(" - ", b);
+  };
+  if (at > 0) link(all[at - 1], "Previous");
+  if (at < all.length - 1) link(all[at + 1], "Next");
+  line.replaceChildren(...parts);
+}
+
 // In a follow-up, Plan shows what came out of the meeting it follows: its decisions and action
 // points, read-only, as context for the agenda. Nothing is copied into this meeting.
 async function showLastTime() {
@@ -827,6 +877,7 @@ function renderAll() {
   if (!typeSel.value) typeSel.value = "general";
   showTip();
   showFollows();
+  showSeries();
   showLastTime();
   attendeeEditor.render();
   agendaEditor.render();
@@ -849,11 +900,14 @@ async function loadList() {
   const q = $("#search").value.trim();
   try {
     meetings = (await api("GET", "/api/meetings" + (q ? "?q=" + encodeURIComponent(q) : ""))) || [];
+    // A full list replaces what is known, so a deleted meeting drops out; a search only adds to it.
+    if (!q) Object.keys(knownMeetings).forEach(id => delete knownMeetings[id]);
     meetings.forEach(m => { knownMeetings[m.id] = m; });
     renderList(q);
     renderCalendar();
     highlight();
     showFollows();
+    showSeries();
   } catch (e) {
     const d = document.createElement("div");
     d.className = "empty";
@@ -1028,6 +1082,7 @@ function fromSaved(m) {
     id: m.id || null,
     savedAt: m.savedAt,
     follows: m.follows || null,
+    series: m.series || null,
     fields,
     checks: migrateChecks(m.checks),
     agenda: agenda.length ? agenda : [blankAgendaRow()],
@@ -1050,8 +1105,12 @@ async function openMeeting(id) {
 }
 
 // The server refuses (409) to save over a version that was saved somewhere else after this page
-// opened the meeting; the page then asks, and save(true) overwrites it.
-async function save(force) {
+// opened the meeting; the page then asks, and save(true) overwrites it. save("auto") is the quiet
+// save made by autosave().
+async function save(how) {
+  const quiet = how === "auto";
+  const meeting = state;
+  const sent = edits;
   const body = {
     fields: state.fields,
     checks: state.checks,
@@ -1059,21 +1118,29 @@ async function save(force) {
     attendees: attendeesToSave(),
     actions: state.actions.filter(a => a.a || a.o || a.d || a.t),   // drop empty rows
     follows: state.follows || undefined,
-    savedAt: state.id && force !== true ? state.savedAt : undefined,   // the version this page has
+    series: state.series || undefined,
+    savedAt: state.id && how !== true ? state.savedAt : undefined,   // the version this page has
   };
   try {
     const m = state.id
       ? await api("PUT", "/api/meetings/" + state.id, body)
       : await api("POST", "/api/meetings", body);
+    if (state !== meeting) return;   // another meeting was opened while this one was being saved
     if (!state.id) timerMeetingSaved(m.id);
     state.id = m.id;
     state.savedAt = m.savedAt;
-    markClean();
+    if (edits === sent) markClean();   // otherwise more was typed meanwhile: still unsaved
     setStatus();
+    if (quiet) return;
     toast("Saved");
     loadList();
   } catch (e) {
-    if (e.status === 409) {
+    if (quiet) {
+      if (e.status === 409 && state === meeting) {
+        autoOff = true;
+        toast("Autosave is paused: this meeting was saved somewhere else. Press Save to choose.");
+      }
+    } else if (e.status === 409) {
       ask("This meeting was saved somewhere else after you opened it here. Overwrite that version with this one?",
         "Overwrite", () => save(true));
     } else {
@@ -1106,7 +1173,9 @@ function followUp() {
 
 // "Repeat weekly..." in the menu: plans the open meeting again, one copy per week for the next N
 // weeks. Each copy is its own meeting (same brief, start time, attendees and agenda; nothing that
-// was recorded), so one can be moved or changed without touching the others.
+// was recorded), so one can be moved or changed without touching the others. The open meeting and
+// its copies share a "series" id (the open meeting's id, or the series it is already in), which
+// is only a link between them (showSeries).
 function setupRepeat() {
   const box = $("#repeatBox");
   const count = $("#repeatCount");
@@ -1122,6 +1191,7 @@ function setupRepeat() {
     const [y, mo, d] = state.fields.date.split("-").map(Number);
     const fields = {};
     [...FOLLOW_UP_FIELDS, "time"].forEach(k => { if (state.fields[k]) fields[k] = state.fields[k]; });
+    const series = state.series || state.id;
     box.hidden = true;
     try {
       for (let k = 1; k <= weeks; k++) {
@@ -1131,7 +1201,12 @@ function setupRepeat() {
           agenda: agendaToSave().map(r => ({ id: newActionId(), t: r.t, m: r.m })),
           attendees: attendeesToSave(),
           actions: [],
+          series,
         });
+      }
+      if (!state.series) {
+        state.series = series;
+        await save();
       }
       toast(`Planned ${weeks} more meeting${weeks > 1 ? "s" : ""}, one a week`);
     } catch (e) {
@@ -1148,7 +1223,7 @@ async function deleteMeeting() {
     markClean();
     renderAll();
     loadList();
-    toast("Meeting deleted. Its file is in the deleted folder.");
+    toast("Meeting deleted. Deleted meetings and backups in the menu puts it back.");
   } catch (e) {
     toast("Delete failed: " + e.message);
   }
@@ -1317,14 +1392,66 @@ async function restoreBackup(file) {
     let data = null;
     try { data = await r.json(); } catch (e) {}
     if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
-    const parts = [`Restored ${data.added} meeting${data.added === 1 ? "" : "s"}`];
-    if (data.skipped) parts.push(`${data.skipped} already here`);
-    if (data.invalid) parts.push(`${data.invalid} unreadable`);
-    toast(parts.join(", "));
+    toast(restoredText(data));
     loadList();
   } catch (e) {
     toast("Restore failed: " + e.message);
   }
+}
+
+// What a restore did, from the server's {added, skipped, invalid}.
+function restoredText(data) {
+  const parts = [`Restored ${data.added} meeting${data.added === 1 ? "" : "s"}`];
+  if (data.skipped) parts.push(`${data.skipped} already here`);
+  if (data.invalid) parts.push(`${data.invalid} unreadable`);
+  return parts.join(", ");
+}
+
+/* ---- Deleted meetings and startup backups ("..." menu) ----
+   A card that lists what can be brought back: each deleted meeting (Put back moves its file out
+   of the deleted folder, as it was) and each backup zip written when the app started (Restore
+   missing adds the meetings that aren't here; it never overwrites one). */
+function setupBin() {
+  const box = $("#binBox");
+  const row = (text, label, fn) => {
+    const line = elem("div", "bin-row");
+    const b = elem("button", "", label);
+    b.onclick = fn;
+    line.append(elem("span", "", text), b);
+    return line;
+  };
+  const act = async (url, done) => {
+    try {
+      toast(done(await api("POST", url)));
+      loadList();
+    } catch (e) {
+      toast("That didn't work: " + e.message);
+    }
+    show();
+  };
+  const show = async () => {
+    try {
+      const deleted = await api("GET", "/api/deleted");
+      const backups = await api("GET", "/api/backups");
+      $("#binDeleted").replaceChildren(...(deleted.length ? deleted.map(m => {
+        const title = m.title || "Untitled meeting";
+        return row([title, m.date, m.time].filter(Boolean).join(", "), "Put back",
+          () => act("/api/deleted/" + encodeURIComponent(m.id), () => `"${title}" is back in your meetings`));
+      }) : [elem("p", "hint", "No deleted meetings.")]));
+      $("#binBackups").replaceChildren(...(backups.length ? backups.map(b =>
+        row(`${b.at}, ${b.count} meeting${b.count === 1 ? "" : "s"}`, "Restore missing",
+          () => act("/api/backups/" + encodeURIComponent(b.name), restoredText))
+      ) : [elem("p", "hint", "No backups yet. One is made each time the app starts.")]));
+    } catch (e) {
+      toast("Couldn't read the deleted meetings and backups: " + e.message);
+    }
+  };
+  $("#binBtn").onclick = () => {
+    box.hidden = false;
+    show();
+    box.scrollIntoView({ block: "nearest" });
+  };
+  $("#binClose").onclick = () => { box.hidden = true; };
 }
 
 /* ---- Top bar: "..." menu and the meetings sidebar toggle ---- */
@@ -1493,6 +1620,7 @@ setupTheme();
 setupSidebar();
 setupCalendar();
 setupRepeat();
+setupBin();
 // The ticket link feature is gone (v1.23.0); don't leave its setting behind in the browser.
 try { localStorage.removeItem("runsheet-ticket-url"); } catch (e) {}
 pullSettings();

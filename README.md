@@ -48,13 +48,18 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
 - **Library:** every saved meeting in a searchable sidebar and a calendar.
 - **Follow-up meeting:** copies the brief, attendees and agenda into a new meeting, linked back
   to the original, and shows what was decided last time while you plan.
-- **Repeat weekly** (the ... menu): plans a saved meeting again for the coming weeks.
+- **Repeat weekly** (the ... menu): plans a saved meeting again for the coming weeks. The brief of
+  each one shows its place in the series, with links to the previous and next meeting.
 - **Copy notes:** a plain-text summary ready to paste into chat or email, or the same notes as
   Markdown for a wiki, Confluence or GitHub. **Print or save as PDF** prints the summary.
 - **Backup** (the ... menu): download every meeting as a zip, and restore from a backup zip (adds
   missing meetings, never overwrites one you have). A backup zip is also written on every start.
+- **Deleted meetings and backups** (the ... menu): put a deleted meeting back, or restore the
+  meetings that are missing from one of the startup backups.
 
-Unsaved work is kept as a draft in the browser and offered back if the page closes unexpectedly.
+While a meeting runs, a meeting that has been saved before is saved again automatically about 20
+seconds after you change it. Unsaved work is also kept as a draft in the browser and offered back
+if the page closes unexpectedly.
 Light and dark themes follow your system setting; Theme in the ... menu picks one for this browser
 (Light, Dark, Paper, Sky, Midnight or Forest).
 
@@ -66,7 +71,7 @@ your machine. Use **Download backup** from the ... menu to make a copy.
 Inside that folder the app also keeps:
 
 - `backups\` - a zip of every meeting, written each time the app starts (the newest 10 are kept)
-- `deleted\` - meetings you deleted; move a file back up one folder to restore it
+- `deleted\` - meetings you deleted; **Deleted meetings and backups** in the ... menu puts one back
 - `settings\page.json` - your theme and sidebar choice, so another browser starts the same way
 
 If the same meeting is open in two tabs, the second save asks before it overwrites the first.

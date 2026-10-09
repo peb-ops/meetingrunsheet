@@ -61,6 +61,8 @@ function Invoke-Api([string]$Method, [string]$Path, [string]$Body = '', [hashtab
         $stream = $req.GetRequestStream()
         $stream.Write($bytes, 0, $bytes.Length)
         $stream.Close()
+    } elseif ($Method -eq 'POST' -or $Method -eq 'PUT') {
+        $req.ContentLength = 0   # as a browser does; Windows answers 411 to a POST with no length
     }
     try {
         $res = $req.GetResponse()
@@ -305,6 +307,43 @@ try {
         -not (Test-Path (Join-Path $data '.json')) -and @(Get-ChildItem -LiteralPath $data -File).Count -eq 3) "(files: $((Get-ChildItem -LiteralPath $data -File).Name -join ', '))"
     [void](Invoke-Api DELETE "/api/meetings/$noId")
 
+    Write-Host 'Deleted meetings and startup backups'
+    # In the deleted folder now: the follow-up ($idB), two throwaway meetings, and a copy of $idA
+    # from before it was restored from the backup.
+    $r = Invoke-Api GET '/api/deleted'
+    $gone = @($r.Json | ForEach-Object { $_.id })
+    Check 'deleted meetings are listed' ($r.Status -eq 200 -and $r.Body.StartsWith('[') -and $gone -contains $idB -and
+        ($r.Json | Where-Object { $_.id -eq $idB }).title -eq 'Crash triage v2') "(got $($r.Body))"
+    Check 'a deleted copy of a meeting that is back is not listed' ($gone -notcontains $idA)
+    Check 'put back without X-Run-Sheet -> 403' ((Invoke-Api POST "/api/deleted/$idB" '' @{ 'X-Run-Sheet' = '0' }).Status -eq 403)
+    $r = Invoke-Api POST "/api/deleted/$idB"
+    Check 'put back returns a deleted meeting' ($r.Status -eq 200 -and $r.Json.restored -eq $idB -and (Invoke-Api GET "/api/meetings/$idB").Json.follows -eq $idA -and
+        -not (Test-Path (Join-Path $data "deleted\$idB.json"))) "(got $($r.Status))"
+    $fileA = [System.IO.File]::ReadAllText((Join-Path $data "$idA.json"))
+    $r = Invoke-Api POST "/api/deleted/$idA"
+    Check 'put back never overwrites a meeting (409)' ($r.Status -eq 409 -and [System.IO.File]::ReadAllText((Join-Path $data "$idA.json")) -eq $fileA -and
+        (Test-Path (Join-Path $data "deleted\$idA.json")))
+    Check 'put back of an unknown or invalid id -> 404' ((Invoke-Api POST '/api/deleted/does-not-exist').Status -eq 404 -and (Invoke-Api POST '/api/deleted/bad_id!').Status -eq 404)
+    [void](Invoke-Api DELETE "/api/meetings/$idB")
+
+    Check 'no startup backups is []' ((Invoke-Api GET '/api/backups').Body -eq '[]')
+    # A startup backup, put there by hand (this server started with no meetings, so it made none).
+    $backupDir = Join-Path $data 'backups'
+    New-Item -ItemType Directory -Path $backupDir | Out-Null
+    [System.IO.File]::WriteAllBytes((Join-Path $backupDir 'meetings-20260101-080500.zip'), $backup)
+    [System.IO.File]::WriteAllText((Join-Path $backupDir 'meetings-20260102-080500.zip'), 'not a zip')
+    $r = Invoke-Api GET '/api/backups'
+    Check 'startup backups are listed with their time and size' ($r.Body.StartsWith('[') -and @($r.Json).Count -eq 1 -and @($r.Json)[0].name -eq 'meetings-20260101-080500.zip' -and
+        @($r.Json)[0].at -eq '2026-01-01 08:05' -and @($r.Json)[0].count -eq 2) "(got $($r.Body))"
+    [void](Invoke-Api DELETE '/api/meetings/20260105-090000-abcdef')
+    $r = Invoke-Api POST '/api/backups/meetings-20260101-080500.zip'
+    Check 'restore from a startup backup adds what is missing' ($r.Status -eq 200 -and $r.Json.added -eq 1 -and $r.Json.skipped -eq 1 -and
+        (Invoke-Api GET '/api/meetings/20260105-090000-abcdef').Status -eq 200) "($($r.Status) $($r.Body))"
+    Check 'restore from an unknown or odd backup name -> 404' ((Invoke-Api POST '/api/backups/meetings-20990101-000000.zip').Status -eq 404 -and
+        (Invoke-Api POST '/api/backups/evil.zip').Status -eq 404 -and (Invoke-Api POST '/api/backups/..%5Cx.zip').Status -eq 404)
+    Check 'restore from a broken startup backup -> 400' ((Invoke-Api POST '/api/backups/meetings-20260102-080500.zip').Status -eq 400)
+    Remove-Item -LiteralPath $backupDir -Recurse -Force
+
     Write-Host 'Page settings'
     Check 'no settings stored is {}' ((Invoke-Api GET '/api/settings').Body -eq '{}')
     Check 'settings without X-Run-Sheet -> 403' ((Invoke-Api PUT '/api/settings' '{"theme":"dark"}' @{ 'X-Run-Sheet' = '0' }).Status -eq 403)
@@ -323,6 +362,7 @@ try {
         checks  = @{ 'before:send-agenda' = $true; 'before:prep-room' = $true; 'during:start-on-time' = $true }
         agenda  = @(@{ t = 'Risks'; m = 20 })
         actions = @(@{ id = 'tk1'; a = 'Write up risks'; o = 'Dee'; d = $next; t = 'https://tracker.example/GAME-9'; done = $false })
+        series  = 'weekly-1'
     } | ConvertTo-Json -Depth 5)).Json.id
     $u2 = (Invoke-Api POST '/api/meetings' (@{
         fields  = @{ title = 'Unprepared sync'; type = 'general'; date = $next; time = '09:00' }
@@ -334,6 +374,7 @@ try {
     $s2 = @($r.Json) | Where-Object { $_.id -eq $u2 }
     Check 'summary has start time and prep info' ($s1.time -eq '14:00' -and $s1.hasGoal -eq $true -and $s1.agendaCount -eq 1 -and @($s1.beforeChecks).Count -eq 2 -and $s1.date -eq $next)
     Check 'summary prep info for an unprepared meeting' ($s2.hasGoal -eq $false -and $s2.agendaCount -eq 0)
+    Check 'summary and file carry the series of a repeated meeting' ($s1.series -eq 'weekly-1' -and $s2.series -eq '' -and (Invoke-Api GET "/api/meetings/$u1").Json.series -eq 'weekly-1')
     Check 'one ticked item stays a list' ($r.Body -match ('"id":"' + $u2 + '"[^}]*"beforeChecks":\["send-agenda"\]') -or $r.Body -match ('"beforeChecks":\["send-agenda"\][^}]*"id":"' + $u2 + '"')) ($r.Body -replace '\s+', ' ')
     Check 'no ticks is an empty list' (@(@($r.Json) | Where-Object { $_.id -eq '20260105-090000-abcdef' })[0].beforeChecks.Count -eq 0 -and $r.Body -match '"beforeChecks":\[\]')
     $ids = @($r.Json | ForEach-Object { $_.id })
@@ -381,6 +422,8 @@ try {
         Check 'an agenda item can be marked left open' ($dom -match '<input type="checkbox" id="ag-o-0">')
         Check 'loose actions, Last time and Repeat weekly start hidden' ($dom -match 'id="looseActs"[^>]*hidden' -and $dom -match 'id="lastTime"[^>]*hidden' -and $dom -match 'id="repeatBox"[^>]*hidden' -and $dom -match 'id="repeatBtn"')
         Check 'Wrap up has a print button and a print heading' ($dom -match 'id="printBtn"' -and $dom -match 'id="printHead"><h1>Meeting notes</h1>')
+        Check 'the print heading comes before the outcome strip' ($dom.IndexOf('id="printHead"') -gt 0 -and $dom.IndexOf('id="printHead"') -lt $dom.IndexOf('aria-label="Outcome"'))
+        Check 'deleted meetings card and series line start hidden' ($dom -match 'id="binBox"[^>]*hidden' -and $dom -match 'id="binBtn"' -and $dom -match 'id="seriesLine"[^>]*hidden')
         Check 'sheet opens on the Plan phase' ($dom -match 'id="sheet" data-phase="plan"' -and $dom -match '<button data-phase="plan" aria-current="true">1 Plan</button>' -and $dom -notmatch '<button data-phase="run" aria-current')
         Check 'readiness strip is filled in' ($dom -match 'id="rGoal"><b>Goal</b> missing<' -and $dom -notmatch 'class="ready-item ok" id="rAgenda"' -and $dom -match 'id="rPrep"><b>Prep</b> 0 of 2 done<' -and $dom -match 'id="timerBtn"')
         Check 'checklist phases are tagged for the phase view' ((& $count 'class="phase" data-id="') -eq 3 -and $dom -match 'id="f-goalmet"')
@@ -436,7 +479,7 @@ try {
         if ($found.Success) { $lines = @($found.Groups[1].Value -split "`r?`n" | Where-Object { $_.Trim() }) }
         Check 'interaction script ran' ($lines.Count -gt 0)
         foreach ($line in $lines) { Check ('page: ' + $line.Substring(5)) ($line.StartsWith('PASS ')) }
-        Check 'Delete moved the file to the deleted folder' (@(Get-ChildItem -Path (Join-Path $data2 'deleted') -Filter '*.json' -ErrorAction SilentlyContinue).Count -eq 1)
+        Check 'Delete then Put back left nothing in the deleted folder' ((Test-Path (Join-Path $data2 'deleted')) -and @(Get-ChildItem -Path (Join-Path $data2 'deleted') -Filter '*.json').Count -eq 0)
         Check 'page settings are a file in the data folder' (Test-Path (Join-Path $data2 'settings\page.json'))
     }
 } finally {
