@@ -229,11 +229,11 @@ const agendaFilled = r => !!((r.t && r.t.trim()) || r.m || (r.d && r.d.trim()) |
 // Left open only counts while no decision is written.
 const leftOpen = r => !!r.nd && !(r.d && r.d.trim());
 
-// Filled-in rows as [{ title, min }] (min is null when not set). Used by the agenda check and the timer.
+// Filled-in rows as [{ id, title, min }] (min is null when not set). Used by the agenda check and the timer.
 function agendaItems() {
   return (state.agenda || [])
     .filter(agendaFilled)
-    .map(r => ({ title: (r.t || "").trim() || "Untitled item", min: +r.m > 0 ? +r.m : null }));
+    .map(r => ({ id: r.id, title: (r.t || "").trim() || "Untitled item", min: +r.m > 0 ? +r.m : null }));
 }
 
 // Rows to save: drops empty ones. d and n are only written when there is something in them.
@@ -1175,7 +1175,8 @@ function followUp() {
 // weeks. Each copy is its own meeting (same brief, start time, attendees and agenda; nothing that
 // was recorded), so one can be moved or changed without touching the others. The open meeting and
 // its copies share a "series" id (the open meeting's id, or the series it is already in), which
-// is only a link between them (showSeries).
+// is only a link between them (showSeries). A week that already has a meeting of the series is
+// skipped, so repeating again never plans the same week twice.
 function setupRepeat() {
   const box = $("#repeatBox");
   const count = $("#repeatCount");
@@ -1193,10 +1194,16 @@ function setupRepeat() {
     [...FOLLOW_UP_FIELDS, "time"].forEach(k => { if (state.fields[k]) fields[k] = state.fields[k]; });
     const series = state.series || state.id;
     box.hidden = true;
+    let planned = 0;
     try {
+      // Asked fresh and in full: the sidebar's list can be a search result.
+      const taken = new Set(((await api("GET", "/api/meetings")) || []).filter(m => m.series === series).map(m => m.date));
       for (let k = 1; k <= weeks; k++) {
+        const date = isoDay(new Date(y, mo - 1, d + 7 * k));
+        if (taken.has(date)) continue;
+        planned++;
         await api("POST", "/api/meetings", {
-          fields: Object.assign({}, fields, { date: isoDay(new Date(y, mo - 1, d + 7 * k)) }),
+          fields: Object.assign({}, fields, { date }),
           checks: {},
           agenda: agendaToSave().map(r => ({ id: newActionId(), t: r.t, m: r.m })),
           attendees: attendeesToSave(),
@@ -1204,11 +1211,14 @@ function setupRepeat() {
           series,
         });
       }
-      if (!state.series) {
+      if (planned && !state.series) {
         state.series = series;
         await save();
       }
-      toast(`Planned ${weeks} more meeting${weeks > 1 ? "s" : ""}, one a week`);
+      const skipped = weeks - planned;
+      const already = `${skipped} week${skipped > 1 ? "s were" : " was"} already planned`;
+      toast(!planned ? "Those weeks are already planned in this series."
+        : `Planned ${planned} more meeting${planned > 1 ? "s" : ""}, one a week` + (skipped ? `; ${already}` : ""));
     } catch (e) {
       toast("Couldn't plan the meetings: " + e.message);
     }

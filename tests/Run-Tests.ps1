@@ -218,6 +218,9 @@ try {
 
     Check 'search is case-insensitive'   (@((Invoke-Api GET '/api/meetings?q=CRASH%20TRIAGE').Json).Count -eq 1)
     Check 'search with no match is []'   ((Invoke-Api GET '/api/meetings?q=zzzz').Body -eq '[]')
+    Check 'search finds action text and owners' (@((Invoke-Api GET '/api/meetings?q=profile%20load').Json).Count -eq 1 -and @((Invoke-Api GET '/api/meetings?q=ana').Json).Count -eq 1)
+    Check 'search ignores key names, ids and true/false' ((Invoke-Api GET '/api/meetings?q=savedAt').Body -eq '[]' -and (Invoke-Api GET '/api/meetings?q=true').Body -eq '[]' -and
+        (Invoke-Api GET '/api/meetings?q=act1').Body -eq '[]' -and (Invoke-Api GET "/api/meetings?q=$idA").Body -eq '[]')
 
     Write-Host 'Guards and errors'
     Check 'POST without X-Run-Sheet -> 403'   ((Invoke-Api POST '/api/meetings' '{}' @{ 'X-Run-Sheet' = '0' }).Status -eq 403)
@@ -365,7 +368,7 @@ try {
         series  = 'weekly-1'
     } | ConvertTo-Json -Depth 5)).Json.id
     $u2 = (Invoke-Api POST '/api/meetings' (@{
-        fields  = @{ title = 'Unprepared sync'; type = 'general'; date = $next; time = '09:00' }
+        fields  = @{ title = 'Unprepared sync'; type = 'general'; date = $next; time = '09:00'; parking = "Budget can't wait" }
         checks  = @{ 'before:send-agenda' = $true; 'before:prep-room' = $false }
         actions = @()
     } | ConvertTo-Json -Depth 5)).Json.id
@@ -374,6 +377,8 @@ try {
     $s2 = @($r.Json) | Where-Object { $_.id -eq $u2 }
     Check 'summary has start time and prep info' ($s1.time -eq '14:00' -and $s1.hasGoal -eq $true -and $s1.agendaCount -eq 1 -and @($s1.beforeChecks).Count -eq 2 -and $s1.date -eq $next)
     Check 'summary prep info for an unprepared meeting' ($s2.hasGoal -eq $false -and $s2.agendaCount -eq 0)
+    $found = @((Invoke-Api GET '/api/meetings?q=RISKS').Json)
+    Check 'search finds agenda items and text with an apostrophe' ($found.Count -eq 1 -and $found[0].id -eq $u1 -and @((Invoke-Api GET '/api/meetings?q=can%27t%20wait').Json).Count -eq 1)
     Check 'summary and file carry the series of a repeated meeting' ($s1.series -eq 'weekly-1' -and $s2.series -eq '' -and (Invoke-Api GET "/api/meetings/$u1").Json.series -eq 'weekly-1')
     Check 'one ticked item stays a list' ($r.Body -match ('"id":"' + $u2 + '"[^}]*"beforeChecks":\["send-agenda"\]') -or $r.Body -match ('"beforeChecks":\["send-agenda"\][^}]*"id":"' + $u2 + '"')) ($r.Body -replace '\s+', ' ')
     Check 'no ticks is an empty list' (@(@($r.Json) | Where-Object { $_.id -eq '20260105-090000-abcdef' })[0].beforeChecks.Count -eq 0 -and $r.Body -match '"beforeChecks":\[\]')

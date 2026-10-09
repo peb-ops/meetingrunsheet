@@ -39,7 +39,8 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
   note-taker and attendees.
 - **Agenda:** items with minutes, checked against the timebox. Press Enter to add the next item.
 - **Meeting timer:** counts down each agenda item, turns amber near the end and red when over,
-  shows the time left in the browser tab, and keeps running if the page is reloaded.
+  shows the time left in the browser tab, and keeps running if the page is reloaded. Change the
+  agenda while it runs and the timer stays on the item it was on.
 - **Record:** under each agenda item, its decision (or a "left open" mark), notes and action
   points (what gets done and who owns it; an action with no owner is flagged and offers the
   attendees as one-click buttons), plus lists for decisions outside the agenda and the parking

@@ -113,6 +113,24 @@
     await save(true);
     check("Save after that turns autosave back on", !dirty && !autoOff && (await saved(id)).fields.parking === "Remapping, again");
 
+    // Timer: stays on its item when the agenda changes while the meeting runs.
+    $("#timerBtn").click();
+    $("#tNext").click();
+    check("the timer marks the item it is on", row(1).classList.contains("now") && row(0).classList.contains("past") && $("#tLabel").textContent === "Now 2/2"
+      && $("#tNext").textContent === "Wrap up");
+    $("#addAgenda").click();
+    type($("#ag-t-2"), "Late addition");
+    check("an item added mid-meeting joins the timer", row(1).classList.contains("now") && $("#tLabel").textContent === "Now 2/3"
+      && $("#tNext").textContent === "Next item" && $("#tSegs").children.length === 3);
+    row(1).querySelector('[data-mv="-1"]').click();
+    check("moving the current item moves the timer with it", row(0).classList.contains("now") && $("#tLabel").textContent === "Now 1/3" && $("#tItem").textContent === "Second item");
+    row(1).querySelector("td.x button").click();
+    check("removing another item keeps the timer on the current one", row(0).classList.contains("now") && $("#tLabel").textContent === "Now 1/2" && $("#tItem").textContent === "Second item");
+    type($("#ag-t-0"), "Second item, renamed");
+    check("the timer shows a renamed item", $("#tItem").textContent === "Second item, renamed");
+    $("#tStop").click();
+    await openMeeting(id);   // throw those changes away
+
     // Follow-up: the brief and agenda, no actions, and what came out of last time.
     followUp();
     await wait(400);
@@ -142,6 +160,13 @@
     const series = $("#seriesLine");
     check("the brief shows the place in the series and the next meeting", !series.hidden && series.textContent.includes("1 of 3")
       && series.textContent.includes("Next: " + isoDay(new Date(y, mo - 1, d + 7))) && !series.textContent.includes("Previous"));
+    $("#repeatBtn").click();
+    type($("#repeatCount"), "3");
+    $("#repeatGo").click();
+    await wait(1500);
+    const all = (await api("GET", "/api/meetings")).filter(m => m.series === id);
+    check("repeating again only plans the weeks that have no meeting yet", all.length === 4
+      && all.map(m => m.date).sort().join() === [0, 7, 14, 21].map(n => isoDay(new Date(y, mo - 1, d + n))).join());
 
     // Settings follow the sidebar and theme choices.
     $("#sideBtn").click();

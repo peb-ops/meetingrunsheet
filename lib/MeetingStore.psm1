@@ -189,13 +189,13 @@ class MeetingStore {
 
     # Summaries for the sidebar: {id,title,date,time,type,savedAt,series,hasGoal,agendaCount,beforeChecks},
     # newest first (by date, then start time).
-    # $query is a case-insensitive substring match on the raw file text.
+    # $query is a case-insensitive substring match on the meeting's own text (see SearchText).
     [object[]] List([string] $query) {
         $items = New-Object System.Collections.Generic.List[object]
         foreach ($file in [System.IO.Directory]::GetFiles($this.Root, '*.json')) {
             $raw = [System.IO.File]::ReadAllText($file, $this.Utf8)
-            if ($query -and $raw.IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
             try { $m = $raw | ConvertFrom-Json } catch { continue }   # skip unreadable files
+            if ($query -and [MeetingStore]::SearchText($m).IndexOf($query, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
 
             # Agenda rows with text or minutes; before v1.3.0 the agenda was lines of text in fields.agenda.
             $agendaCount = @($m.agenda | Where-Object { $_.t -or $_.m }).Count
@@ -220,6 +220,27 @@ class MeetingStore {
         return @($items | Sort-Object -Property @{ Expression = { "$($_.date)" }; Descending = $true },
                                                 @{ Expression = { "$($_.time)" }; Descending = $true },
                                                 @{ Expression = { "$($_.savedAt)" }; Descending = $true })
+    }
+
+    # What a search looks through: what was typed into the meeting, one piece per line. That is the
+    # brief and record fields (not the timebox or the goal-met answer), agenda titles, decisions
+    # and notes, attendees, and each action's text and owner. Not the file's raw text, where every
+    # meeting has the same key names, ids and "true", and quotes are stored escaped.
+    static [string] SearchText([object] $m) {
+        $parts = New-Object System.Collections.Generic.List[string]
+        if ($m.fields) {
+            foreach ($p in $m.fields.PSObject.Properties) {
+                if ($p.Name -ne 'length' -and $p.Name -ne 'goalmet') { $parts.Add([MeetingStore]::DayText($p.Value)) }
+            }
+        }
+        foreach ($row in @($m.agenda)) {
+            if ($row) { $parts.Add([string]$row.t); $parts.Add([string]$row.d); $parts.Add([string]$row.n) }
+        }
+        foreach ($name in @($m.attendees)) { $parts.Add([string]$name) }
+        foreach ($act in @($m.actions)) {
+            if ($act) { $parts.Add([string]$act.a); $parts.Add([string]$act.o) }
+        }
+        return ($parts -join "`n")
     }
 
     # Item ids ticked in one checklist phase: checks {"before:send-agenda": true} -> @('send-agenda').

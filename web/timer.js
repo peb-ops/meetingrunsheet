@@ -9,7 +9,9 @@
   was (an unsaved meeting resumes when its draft is restored). Stop clears it; one older than
   12 hours is dropped.
 
-  The agenda is read once when you press Start meeting. Each item counts down its minutes;
+  The timer follows the agenda as it is edited (syncTimer): an item added, removed, moved, renamed
+  or given other minutes while the meeting runs shows up in the bar, and the timer stays on the
+  item it was on (items are matched by their id). Each item counts down its minutes;
   the clock turns amber near the end (5 min left, or 1 min for items under 10 min) and red
   when the item runs over. Next item moves on; on the last item the button becomes Wrap up,
   which shows the closing reminder and the meeting's remaining time.
@@ -130,11 +132,33 @@ function nextItem() {
   openNowRecord();
 }
 
+// Brings the timer's items up to date with the agenda on screen, keeping it on the item it was on.
+// If that item was removed, the one that took its place starts now. With every item removed, the
+// timer keeps what it had. Does nothing unless the timer is running on the meeting on screen.
+function syncTimer() {
+  if (!timer.tick || !timer.hasAgenda || timer.meeting !== (state.id || UNSAVED)) return;
+  const items = agendaItems();
+  if (!items.length) return;
+  const before = JSON.stringify([timer.items, timer.index, timer.totalMin]);
+  const now = timer.items[timer.index] || {};
+  let at = timer.wrapUp ? items.length - 1 : items.findIndex(it => it.id === now.id);
+  if (at < 0) {
+    at = Math.min(timer.index, items.length - 1);
+    if (items.length !== timer.items.length) timer.itemStart = Date.now();
+  }
+  timer.items = items;
+  timer.index = at;
+  timer.totalMin = (+state.fields.length || 0) || items.reduce((sum, it) => sum + (it.min || 0), 0);
+  if (JSON.stringify([timer.items, timer.index, timer.totalMin]) === before) return;
+  renderTimer();
+  storeTimer();
+}
+
 // Shows where the meeting is in the agenda card: the current item gets the class "now", finished
-// ones "past". Rows are matched to the timer's items by position, so nothing is marked once the
-// agenda has a different number of filled-in rows than when the timer started.
-// Also called by showAgendaTimes() in app.js whenever the agenda is redrawn or edited.
+// ones "past". Called by showAgendaTimes() in app.js whenever the agenda is redrawn or edited, so
+// it is also where the timer catches up with the agenda (syncTimer).
 function markAgendaNow() {
+  syncTimer();
   const rows = timerRows();
   state.agenda.forEach((row, i) => {
     const tr = $("#agendaRows").rows[i];
@@ -146,7 +170,7 @@ function markAgendaNow() {
 }
 
 // The agenda rows the timer's items stand for, in order; none if the timer isn't running on the
-// meeting on screen, or its agenda no longer has the same number of filled-in rows.
+// meeting on screen, or its agenda has no filled-in rows left (syncTimer keeps them in step).
 function timerRows() {
   const rows = state.agenda.filter(agendaFilled);
   const on = !!timer.tick && timer.hasAgenda && timer.meeting === (state.id || UNSAVED) && rows.length === timer.items.length;
@@ -200,13 +224,13 @@ function renderTimer() {
     if (segs.children.length !== timer.items.length) {
       segs.replaceChildren(...timer.items.map(it => {
         const seg = document.createElement("i");
-        seg.style.flex = `${it.min || 5} 1 0`;
         seg.appendChild(document.createElement("b"));
         return seg;
       }));
     }
     [...segs.children].forEach((seg, k) => {
       const current = k === timer.index && !timer.wrapUp;
+      seg.style.flex = `${timer.items[k].min || 5} 1 0`;   // set each time: minutes can be edited mid-meeting
       seg.classList.toggle("done", timer.wrapUp || k < timer.index);
       seg.firstChild.style.width = (current ? (item.min ? Math.min(1, itemSec / (item.min * 60)) : 1) * 100 : 0) + "%";
     });
