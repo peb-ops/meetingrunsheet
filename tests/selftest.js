@@ -199,7 +199,25 @@
     back.querySelector("button").click();
     await wait(800);
     check("Put back returns the meeting as it was", (await saved(id)).fields.parking === "Remapping, again"
-      && !document.querySelector("#binDeleted .bin-row") && !!document.querySelector(`#list .item[data-id="${id}"]`));
+      && !document.querySelector("#binDeleted .bin-row") && ["up", "past"].some(t => { setListTab(t); return !!document.querySelector(`#list .item[data-id="${id}"]`); }));
+
+    // Sidebar tabs: a past meeting shows on Past under its month with what came out of it.
+    await api("POST", "/api/meetings", { fields: { title: "Old review", date: "2020-01-15", goalmet: "yes" },
+      agenda: [{ t: "Scope", m: 10, d: "Keep it small" }], actions: [{ id: "x1", a: "Write it down", o: "Ana" }] });
+    await loadList();
+    setListTab("up");
+    check("Upcoming shows no months and the calendar", !document.querySelector("#list .month") && !$("#cal").classList.contains("folded") && $("#calShow").hidden);
+    setListTab("past");
+    const jan = [...document.querySelectorAll("#list .month")].find(b => b.textContent.startsWith("January 2020"));
+    check("Past folds the calendar and lists meetings by month", $("#cal").classList.contains("folded") && !$("#calShow").hidden && !!jan);
+    $("#calShow").click();
+    check("Show unfolds the calendar", !$("#cal").classList.contains("folded") && $("#calShow").textContent === "Hide");
+    if (jan.getAttribute("aria-expanded") !== "true") jan.click();
+    const old = [...document.querySelectorAll("#list .item")].find(b => b.textContent.includes("Old review"));
+    check("a past meeting shows its decisions, actions and goal", !!old && old.textContent.includes("1 decision") && old.textContent.includes("1 action") && old.textContent.includes("Goal met"));
+    [...document.querySelectorAll("#list .month")].find(b => b.textContent.startsWith("January 2020")).click();
+    check("a month folds", ![...document.querySelectorAll("#list .item")].some(b => b.textContent.includes("Old review")));
+    setListTab("up");
 
     // Last: the mock meeting (tests\mock-meeting.json, copied next to the page). Its notes go into
     // <pre id="mocknotes"> and the tests print them, so the export can be read after every run.

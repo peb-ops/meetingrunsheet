@@ -43,12 +43,14 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
 - **Meeting timer:** counts down each agenda item, turns amber near the end and red when over,
   shows the time left in the browser tab, and keeps running if the page is reloaded. Change the
   agenda while it runs and the timer stays on the item it was on.
-- **Record:** under each agenda item, its decision (or a "left open" mark), notes and action
-  points (what gets done and who owns it; an action with no owner is flagged and offers the
+- **Record:** in Run each agenda item is a card with its decision (or a "left open" mark), a list
+  of notes and its action (what gets done and who owns it; an action with no owner is flagged and offers the
   attendees as one-click buttons), plus lists for decisions outside the agenda and the parking
   lot. Wrap up shows it all as one summary, with a short self-review.
 - **Facilitation checklist:** before, during and after the meeting.
-- **Library:** every saved meeting in a searchable sidebar and a calendar.
+- **Library:** a searchable sidebar with a calendar and two tabs: Upcoming (today, this week,
+  later, with how prepared each meeting is, and the last meeting one click away) and Past (by
+  month, with what came out of each meeting).
 - **Follow-up meeting:** copies the brief, attendees and agenda into a new meeting, linked back
   to the original, and shows what was decided last time while you plan.
 - **Repeat weekly** (the ... menu): plans a saved meeting again for the coming weeks. The brief of

@@ -351,18 +351,23 @@ const agendaEditor = rowEditor({
   removeLabel: "Remove item",
   changed: agendaChanged,
   rendered: () => { showAgendaTimes(); showItemActions(); },
-  cells: (row, i) => `<td class="at"></td><td class="n">${i + 1}</td>
+  cells: (row, i) => `<td class="at"></td><td class="n"><span>${i + 1}</span></td>
     <td class="t"><div class="t-line"><div class="grow"><textarea id="ag-t-${i}" rows="1" aria-label="Agenda item ${i + 1}" placeholder="${i ? "Next item" : "e.g. Context and goal"}"></textarea><span aria-hidden="true"></span></div><button class="rec-toggle" aria-controls="ag-rec-${i}" title="Decision, notes and actions for this item">Notes</button></div>
       <button class="rec-sum" title="Open the decision, notes and actions" hidden></button>
       <div class="rec" id="ag-rec-${i}" hidden>
-        <label class="label" for="ag-d-${i}">Decision</label>
-        <div class="grow"><textarea id="ag-d-${i}" rows="1" placeholder="What was decided, in one line"></textarea><span aria-hidden="true"></span></div>
-        <span></span>
-        <label class="open-flag" for="ag-o-${i}"><input type="checkbox" id="ag-o-${i}"> Left open: no decision was made</label>
-        <span class="label">Notes</span>
-        <div class="rec-notes"></div>
-        <span class="label">Actions</span>
-        <div class="rec-acts"></div>
+        <div class="rec-sec rec-dec">
+          <div class="rec-h"><label class="label" for="ag-d-${i}">Decision</label>
+            <label class="open-flag" for="ag-o-${i}"><input type="checkbox" id="ag-o-${i}"> Left open</label></div>
+          <div class="grow"><textarea id="ag-d-${i}" rows="1" placeholder="What was decided, in one line"></textarea><span aria-hidden="true"></span></div>
+        </div>
+        <div class="rec-sec rec-note">
+          <div class="rec-h"><span class="label">Notes</span></div>
+          <div class="rec-notes"></div>
+        </div>
+        <div class="rec-sec rec-act">
+          <div class="rec-h"><span class="label">Action points</span></div>
+          <div class="rec-acts"></div>
+        </div>
       </div></td>
     <td class="min"><input type="number" id="ag-m-${i}" min="1" step="1" aria-label="Minutes for item ${i + 1}" placeholder="min"></td>`,
   bind: (tr, row, i) => {
@@ -436,18 +441,26 @@ function fillNotes(box, row, item) {
 function showRecord(tr, row) {
   const open = openRecs.has(row);
   const decision = (row.d || "").trim();
-  const itemNotes = (row.n || "").split("\n").map(s => s.trim()).filter(Boolean).join(" / ");
+  const noteList = (row.n || "").split("\n").map(s => s.trim()).filter(Boolean);
   const acts = state.actions.filter(a => a.g === row.id && a.a && a.a.trim()).length;
   const sum = tr.querySelector(".rec-sum");
   tr.querySelector(".rec").hidden = !open;
   tr.querySelector(".rec-toggle").setAttribute("aria-expanded", open);
-  sum.hidden = open || !(decision || itemNotes || acts || row.nd);
+  tr.classList.toggle("decided", !!decision);
+  tr.classList.toggle("leftopen", !decision && !!row.nd);
+  tr.classList.toggle("rec-open", open);
+  sum.hidden = open || !(decision || noteList.length || acts || row.nd);
   sum.classList.toggle("decided", !!decision);
-  sum.textContent = [
-    decision ? "Decision: " + decision + (itemNotes ? " (+ notes)" : "") : row.nd ? "Left open" + (itemNotes ? " (+ notes)" : "")
-      : itemNotes ? "Notes: " + itemNotes : "",
+  // "Decided: ..." or "Left open", or else the first note; then how many notes and actions.
+  const line = elem("span", "sum-line");
+  if (decision) line.append(elem("b", "sum-k", "Decided: "), decision);
+  else if (row.nd) line.append(elem("b", "sum-k", "Left open"));
+  else if (noteList.length) line.append(noteList[0]);
+  const chips = [
+    noteList.length ? `${noteList.length} note${noteList.length > 1 ? "s" : ""}` : "",
     acts ? `${acts} action${acts > 1 ? "s" : ""}` : "",
-  ].filter(Boolean).join(" \u00b7 ");
+  ].filter(Boolean).map(t => elem("span", "sum-chip", t));
+  sum.replaceChildren(line, ...chips);
 }
 
 /* ---- Actions on agenda items ----
@@ -471,6 +484,7 @@ function actionLine(act) {
   const flag = () => {
     const none = !(act.o && act.o.trim());
     owner.classList.toggle("missing", !!(act.a && act.a.trim()) && none);
+    line.classList.toggle("no-owner", !!(act.a && act.a.trim()) && none);
     chips.hidden = !none || !chips.childElementCount;
   };
   peopleNames().forEach(name => {
@@ -958,30 +972,146 @@ async function loadList() {
   }
 }
 
-// Upcoming (today and later, soonest first), then past meetings (newest first, as the server sends them).
+/* Two tabs: Upcoming (today and later, soonest first, grouped Today / This week / Later) and Past
+   (newest first, as the server sends them, in months that fold). The tab is kept in localStorage
+   runsheet-list-tab. On the Past tab the calendar folds to one line unless it was asked for. */
+const LIST_TAB_KEY = "runsheet-list-tab";
+let listTab = "up";
+try { if (localStorage.getItem(LIST_TAB_KEY) === "past") listTab = "past"; } catch (e) { /* no storage */ }
+let calShown = false;          // calendar opened while on the Past tab
+const openMonths = new Set();  // past months unfolded ("yyyy-MM"); the newest two start open
+let monthsSeeded = false;
+
+function setupListTabs() {
+  document.querySelectorAll(".tabs [role=tab]").forEach(tab => {
+    tab.onclick = () => { setListTab(tab.dataset.tab); };
+    tab.onkeydown = e => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      setListTab(listTab === "up" ? "past" : "up");
+      $(listTab === "up" ? "#tabUp" : "#tabPast").focus();
+    };
+  });
+  $("#calShow").onclick = () => { calShown = !calShown; showCalFold(); };
+  showListTab();
+}
+
+function setListTab(tab) {
+  listTab = tab;
+  calShown = false;
+  try { localStorage.setItem(LIST_TAB_KEY, tab); } catch (e) { /* no storage */ }
+  showListTab();
+  renderList($("#search").value.trim());
+  highlight();
+}
+
+function showListTab() {
+  ["up", "past"].forEach(t => {
+    const tab = $(t === "up" ? "#tabUp" : "#tabPast");
+    tab.setAttribute("aria-selected", t === listTab);
+    tab.tabIndex = t === listTab ? 0 : -1;
+  });
+  $("#search").placeholder = listTab === "past" ? "Search past meetings..." : "Search titles, notes, people...";
+  showCalFold();
+}
+
+function showCalFold() {
+  const folded = listTab === "past" && !calShown;
+  $("#cal").classList.toggle("folded", folded);
+  $("#calShow").hidden = listTab !== "past";
+  $("#calShow").textContent = folded ? "Show" : "Hide";
+  $("#calShow").setAttribute("aria-expanded", !folded);
+}
+
+// "Wed 11" for a "yyyy-MM-dd" date.
+function shortDay(iso) {
+  const [y, mo, d] = iso.split("-").map(Number);
+  return new Date(y, mo - 1, d).toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+}
+
 function renderList(q) {
   const list = $("#list");
   list.innerHTML = "";
-  if (!meetings.length) {
-    const msg = q ? "No meetings match that search." : "No saved meetings yet. Fill in the run sheet and press Save.";
-    list.innerHTML = `<div class="empty">${msg}</div>`;
-    return;
-  }
   const now = today();
   const upcoming = meetings.filter(m => m.date >= now).reverse();
   const past = meetings.filter(m => !(m.date >= now));
-  const group = (name, items) => {
-    if (!items.length) return;
-    if (name) {
-      const h = document.createElement("div");
-      h.className = "group";
-      h.textContent = name;
-      list.appendChild(h);
+  $("#countUp").textContent = upcoming.length || "";
+  $("#countPast").textContent = past.length || "";
+  showLastMeeting(q ? [] : past);
+  const head = (text, cls) => list.appendChild(elem("div", cls || "group", text));
+
+  if (!meetings.length) {
+    head(q ? "No meetings match that search." : "No saved meetings yet. Fill in the run sheet and press Save.", "empty");
+    return;
+  }
+  if (listTab === "up") {
+    if (!upcoming.length) {
+      head(q ? "No upcoming meetings match that search." : "No upcoming meetings. Plan one with + New or on the calendar.", "empty");
+      return;
     }
-    items.forEach(m => list.appendChild(listItem(m)));
+    const [y, mo, d] = now.split("-").map(Number);
+    const sunday = isoDay(new Date(y, mo - 1, d + 6 - (new Date(y, mo - 1, d).getDay() + 6) % 7));
+    const groups = [["Today", m => m.date === now], ["This week", m => m.date > now && m.date <= sunday], ["Later", m => m.date > sunday]];
+    groups.forEach(([name, test]) => {
+      const items = upcoming.filter(test);
+      if (!items.length) return;
+      head(name);
+      items.forEach(m => list.appendChild(listItem(m)));
+    });
+    return;
+  }
+
+  if (!past.length) {
+    head(q ? "No past meetings match that search." : "No past meetings yet.", "empty");
+    return;
+  }
+  const months = [];
+  past.forEach(m => {
+    const key = (m.date || "").slice(0, 7) || "none";
+    if (!months.length || months[months.length - 1].key !== key) months.push({ key, items: [] });
+    months[months.length - 1].items.push(m);
+  });
+  if (!monthsSeeded && !q) {
+    months.slice(0, 2).forEach(g => openMonths.add(g.key));
+    monthsSeeded = true;
+  }
+  months.forEach(g => {
+    const open = !!q || openMonths.has(g.key);
+    const b = elem("button", "month");
+    b.setAttribute("aria-expanded", open);
+    let name = "No date";
+    if (g.key !== "none") {
+      const [y, mo] = g.key.split("-").map(Number);
+      const opts = { month: "long" };
+      if (g.key.slice(0, 4) !== now.slice(0, 4)) opts.year = "numeric";
+      name = new Date(y, mo - 1, 1).toLocaleDateString(undefined, opts);
+    }
+    b.append(elem("span", "", name), elem("b", "", String(g.items.length)));
+    b.onclick = () => {
+      if (openMonths.has(g.key)) openMonths.delete(g.key); else openMonths.add(g.key);
+      renderList($("#search").value.trim());
+      highlight();
+    };
+    list.appendChild(b);
+    if (open) g.items.forEach(m => list.appendChild(listItem(m)));
+  });
+}
+
+// Under the Upcoming list: the latest past meeting, and a way to all of them.
+function showLastMeeting(past) {
+  const box = $("#lastMeeting");
+  const m = past[0];
+  box.hidden = listTab !== "up" || !m;
+  if (box.hidden) return;
+  const text = elem("span", "lm-text");
+  text.append(elem("span", "lm-when", "Last meeting \u00b7 " + (m.date ? shortDay(m.date) : "no date")),
+              elem("span", "lm-title", m.title || "Untitled meeting"));
+  const all = elem("span", "lm-all", "All past \u203a");
+  box.replaceChildren(text, all);
+  box.title = "Open " + (m.title || "this meeting") + ". The Past tab lists all past meetings.";
+  box.onclick = e => {
+    if (e.target === all) setListTab("past");
+    else guard(() => openMeeting(m.id));
   };
-  group("Upcoming", upcoming);
-  group(upcoming.length ? "Past" : "", past);
 }
 
 // How prepared an upcoming meeting is: a goal, an agenda, and the Before checklist done.
@@ -1006,16 +1136,23 @@ function listItem(m) {
 
   const meta = document.createElement("span");
   meta.className = "m";
-  meta.textContent = [m.date, m.time, typeName(m.type)].filter(Boolean).join(" \u00b7 ");
   const pill = (text, cls) => {
     const p = document.createElement("span");
     p.className = "pill " + cls;
     p.textContent = text;
     meta.appendChild(p);
   };
+  const count = (n, word) => n ? `${n} ${word}${n > 1 ? "s" : ""}` : "";
   if (m.date >= today()) {
+    meta.textContent = [m.date === today() ? "" : shortDay(m.date), m.time, typeName(m.type)].filter(Boolean).join(" \u00b7 ");
     const r = readiness(m);
     pill(r.text, r.ready ? "ready" : "prep");
+  } else {
+    // Past: what came out of it, and the self-review answer.
+    const out = [count(m.decisionCount, "decision"), count(m.actionCount, "action")].filter(Boolean);
+    meta.textContent = [m.date ? shortDay(m.date) : "", ...(out.length ? out : [typeName(m.type)])].filter(Boolean).join(" \u00b7 ");
+    const goal = { yes: ["Goal met", "ready"], partly: ["Partly", "part"], no: ["Goal missed", "missed"] }[m.goalmet];
+    if (goal) pill(goal[0], goal[1]);
   }
 
   b.append(title, meta);
@@ -1702,6 +1839,7 @@ setupMenu();
 setupTheme();
 setupSidebar();
 setupCalendar();
+setupListTabs();
 setupRepeat();
 setupBin();
 // The ticket link feature is gone (v1.23.0); don't leave its setting behind in the browser.

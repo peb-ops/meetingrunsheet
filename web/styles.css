@@ -142,6 +142,33 @@ textarea{resize:vertical;min-height:72px;line-height:1.55}
 .pill{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
 .pill.ready{background:color-mix(in srgb,var(--done) 14%,transparent);color:var(--done)}
 .pill.prep{background:var(--accent-soft);color:var(--accent)}
+.pill.part{background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
+.pill.missed{background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
+/* Upcoming | Past tabs (setupListTabs in app.js) */
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:3px;border-radius:9px;background:var(--field);border:1px solid var(--line)}
+.tabs button{display:flex;align-items:center;justify-content:center;gap:6px;height:30px;padding:0 8px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:13px;font-weight:600}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.tabs b{font-size:11.5px;font-weight:700}
+.tabs button[aria-selected="true"] b{color:var(--accent)}
+/* A past month that folds */
+.month{display:flex;align-items:center;gap:8px;width:100%;margin-top:4px;padding:7px 10px;border:0;border-radius:var(--radius-sm);background:transparent;color:var(--ink);font-size:12.5px;font-weight:650;text-align:left}
+.month:first-child{margin-top:0}
+.month:hover{background:var(--field)}
+.month::before{content:"";width:6px;height:6px;margin:0 3px 0 1px;border:solid var(--muted);border-width:0 2px 2px 0;transform:rotate(-45deg);transition:transform .15s}
+.month[aria-expanded="true"]::before{transform:translateY(-2px) rotate(45deg)}
+.month span{flex:1}
+.month b{font-weight:600;color:var(--muted)}
+/* Under the Upcoming list: the latest past meeting */
+.last-meeting{flex:none;display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--field);text-align:left;font-weight:400}
+.last-meeting:hover{border-color:var(--line-strong)}
+.lm-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.lm-when{font-size:12px;color:var(--muted)}
+.lm-title{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lm-all{font-size:12.5px;font-weight:600;color:var(--accent);white-space:nowrap;padding:4px 0}
+.lm-all:hover{text-decoration:underline}
+/* The calendar folded to its title line (Past tab) */
+.side.cal.folded .cal-grid,.side.cal.folded .cal-list,.side.cal.folded #calToday,.side.cal.folded #calPrev,.side.cal.folded #calNext{display:none}
 .empty{color:var(--muted);font-size:13.5px;padding:10px}
 .group{font-size:12px;font-weight:600;color:var(--faint);padding:10px 10px 2px}
 .group:first-child{padding-top:2px}
@@ -309,34 +336,87 @@ table.row-table{min-width:0}
 .rec-toggle{flex:none;margin-top:4px;padding:4px 10px;font-size:13px;font-weight:600;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent)}
 .rec-toggle:hover{background:var(--accent);color:var(--accent-ink)}
 .rec-toggle[aria-expanded="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.rec-sum{display:block;max-width:100%;margin:0 0 6px 10px;padding:1px 8px;border:0;border-left:3px solid var(--line-strong);border-radius:0;background:transparent;text-align:left;font-size:13.5px;font-weight:400;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rec-sum.decided{border-left-color:var(--done);color:var(--ink);white-space:normal;overflow-wrap:anywhere}
-.rec{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;align-items:start;margin:2px 0 8px 10px}
-.rec .label{padding-top:9px}
+.rec-toggle::after{content:"";display:inline-block;width:5px;height:5px;margin:0 1px 0 8px;border:solid currentColor;border-width:0 2px 2px 0;transform:translateY(-3px) rotate(45deg)}
+.rec-toggle[aria-expanded="true"]::after{transform:translateY(0) rotate(-135deg)}
+/* Closed: one line with the decision (or "Left open", or the first note), then note / action counts */
+.rec-sum{display:flex;align-items:center;gap:8px;width:100%;margin:0 0 6px;padding:2px 9px;border:0;border-radius:var(--radius-sm);background:transparent;text-align:left;font-size:13.5px;font-weight:400;color:var(--muted)}
+.rec-sum:hover{background:var(--field)}
+.sum-line{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec-sum.decided .sum-line{color:var(--ink);white-space:normal;overflow-wrap:anywhere}
+.sum-k{font-weight:600}
+.rec-sum.decided .sum-k{color:var(--done)}
+tr.leftopen .sum-k{color:var(--warn)}
+.sum-chip{flex:none;padding:1px 9px;border-radius:99px;background:var(--field);border:1px solid var(--line);font-size:12px;font-weight:600;color:var(--muted)}
+/* Open: Decision, Notes, Action points, each with a heading line */
+.rec{display:flex;flex-direction:column;gap:14px;margin:6px 0 10px 4px}
+.rec-sec{display:flex;flex-direction:column;gap:6px;min-width:0}
+.rec-h{display:flex;align-items:center;gap:10px}
+.rec-h .label{flex:1;margin:0;font-size:13px;font-weight:650;color:var(--ink)}
+.rec-h .label::before{content:"";display:inline-block;width:8px;height:8px;margin-right:8px;border-radius:2px;background:var(--line-strong);vertical-align:1px}
+.rec-dec .rec-h .label::before{background:var(--done)}
+.rec-note .rec-h .label::before{background:var(--muted)}
+.rec-act .rec-h .label::before{background:var(--accent)}
+.rec-dec textarea:not(:placeholder-shown){background:color-mix(in srgb,var(--done) 8%,var(--surface));border-color:color-mix(in srgb,var(--done) 35%,var(--line))}
 .agenda-table tr.now .rec .grow > *{font-weight:400}
 .agenda-table tr.now .grow textarea{background:var(--surface)}
 
-/* Actions on agenda items (actionLine / showItemActions in app.js): one line per action under an
-   item's record. */
-.rec > span.label{padding-top:9px}
-.rec-acts{display:flex;flex-direction:column;gap:4px;min-width:0}
-.rec-acts > button{align-self:flex-start}
-.rec-notes{display:flex;flex-direction:column;gap:4px;min-width:0}
-.rec-notes > button{align-self:flex-start}
-.note-line{display:grid;grid-template-columns:minmax(0,1fr) 28px;gap:6px;align-items:start}
+/* Notes (fillNotes in app.js): a bulleted list; a box shows its border on hover or while typing */
+.rec-notes{display:flex;flex-direction:column;gap:0;min-width:0}
+.rec-notes > button{align-self:flex-start;margin-top:4px}
+.note-line{display:grid;grid-template-columns:12px minmax(0,1fr) 28px;gap:4px;align-items:start}
+.note-line::before{content:"";width:6px;height:6px;margin-top:15px;border-radius:50%;background:var(--muted);justify-self:center}
+.note-line .grow textarea{background:transparent;border-color:transparent}
+.note-line .grow textarea:hover{border-color:var(--line)}
+.note-line .grow textarea:focus{background:var(--surface);border-color:var(--accent)}
+.note-line .grow textarea:placeholder-shown{border-color:var(--line-strong);border-style:dashed}
 .note-line button.x{margin-top:4px;padding:3px 7px;border-color:transparent;background:transparent;color:var(--faint)}
 .note-line button.x:hover{background:var(--field);color:var(--ink)}
-/* Two rows, so the text has the full width: the action, then owner | remove */
-.act-line{display:grid;grid-template-columns:minmax(0,1fr) 28px;gap:4px 6px;align-items:center;padding-bottom:6px}
-.act-line .grow{grid-column:1/-1}
-.act-line input{padding:7px 9px}
+@media (hover:hover){.note-line:not(:hover):not(:focus-within) button.x{opacity:0}}
+
+/* Actions on agenda items (actionLine / showItemActions in app.js): one framed line per action,
+   what | owner | remove. An action with no owner is dashed, with the people under it. */
+.rec-acts{display:flex;flex-direction:column;gap:6px;min-width:0}
+.rec-acts > button{align-self:flex-start}
+.act-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(96px,150px) 28px;gap:6px;align-items:center;padding:4px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface)}
+.act-line .grow textarea{background:transparent;border-color:transparent}
+.act-line .grow textarea:hover{border-color:var(--line)}
+.act-line .grow textarea:focus{background:var(--surface);border-color:var(--accent)}
+.act-line input{padding:6px 10px;border-radius:99px}
+.act-line input:not(:placeholder-shown):not(:focus){background:var(--accent-soft);border-color:transparent;color:var(--accent);font-weight:600}
 .act-line input.missing,.act-line input.missing:hover{border-color:var(--warn);border-style:dashed}
+.act-line.no-owner{border-style:dashed;border-color:color-mix(in srgb,var(--warn) 55%,var(--line));background:color-mix(in srgb,var(--warn) 5%,var(--surface))}
 .act-line button.x{padding:3px 7px;border-color:transparent;background:transparent;color:var(--faint)}
 .act-line button.x:hover{background:var(--field);color:var(--ink)}
+@media (max-width:640px){.act-line{grid-template-columns:minmax(0,1fr) 28px}.act-line .grow{grid-column:1/-1}}
 /* The people in the meeting, under an action with no owner: one click picks the owner */
-.who-chips{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px}
-.who-chip{padding:1px 9px;font-size:12.5px;font-weight:500;border-radius:99px;color:var(--muted)}
+.who-chips{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:0 6px 4px}
+.who-chips::before{content:"Give it to";margin-right:4px;font-size:12px;color:var(--muted)}
+.who-chip{padding:1px 10px;font-size:12.5px;font-weight:500;border-radius:99px;color:var(--ink)}
 .who-chip:hover{border-color:var(--accent);color:var(--accent)}
+
+/* Run: each agenda item is a card (the table's rows, spaced apart). The number is a circle: a tick
+   once decided, orange when left open, filled while the timer is on it. */
+.sheet[data-phase="run"] .agenda-table{border-collapse:separate;border-spacing:0 10px;margin:-8px 0 -6px}
+.sheet[data-phase="run"] .agenda-table td,.sheet[data-phase="run"] .agenda-table tr + tr td{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--surface);padding-top:8px;padding-bottom:8px}
+.sheet[data-phase="run"] .agenda-table td:first-child{border-left:1px solid var(--line);border-radius:10px 0 0 10px}
+.sheet[data-phase="run"] .agenda-table td:last-child{border-right:1px solid var(--line);border-radius:0 10px 10px 0}
+.sheet[data-phase="run"] .agenda-table td.at,.sheet[data-phase="run"] .agenda-table td.n{padding-top:14px}
+.sheet[data-phase="run"] .agenda-table td.n{width:34px;text-align:center}
+/* Moving items is planning: Run drops the arrows, so the record gets the width */
+.sheet[data-phase="run"] .agenda-table td.mv{display:none}
+.sheet[data-phase="run"] .agenda-table td.min{width:64px}
+.sheet[data-phase="run"] .agenda-table td.n span{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-top:-2px;box-sizing:border-box;border:1.5px solid var(--line-strong);border-radius:50%;font-size:12px;font-weight:700;line-height:1;color:var(--muted)}
+.sheet[data-phase="run"] .agenda-table tr.decided td.n span{border-color:transparent;background:color-mix(in srgb,var(--done) 16%,transparent);color:var(--done);font-size:0}
+.sheet[data-phase="run"] .agenda-table tr.decided td.n span::after{content:"\2713";font-size:13px}
+.sheet[data-phase="run"] .agenda-table tr.leftopen td.n span{border-color:var(--warn);color:var(--warn)}
+.sheet[data-phase="run"] .agenda-table tr.rec-open td{border-color:var(--line-strong)}
+.sheet[data-phase="run"] .agenda-table tr.now td{border-color:var(--accent);border-top-width:2px;border-bottom-width:2px;background:var(--surface)}
+.sheet[data-phase="run"] .agenda-table tr.now td:first-child{border-left-width:2px}
+.sheet[data-phase="run"] .agenda-table tr.now td:last-child{border-right-width:2px}
+.sheet[data-phase="run"] .agenda-table tr.now td.at{box-shadow:none}
+.sheet[data-phase="run"] .agenda-table tr.now td.n span{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.sheet[data-phase="run"] .agenda-table tr.now.decided td.n span{font-size:0}
+.sheet[data-phase="run"] .agenda-table tr.past:not(.rec-open) td{background:var(--field)}
 /* Actions with no agenda item, under the agenda in Run */
 .loose-acts{display:flex;flex-direction:column;gap:6px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 /* "Left open" tick in an item's record, and its tag in the summary */

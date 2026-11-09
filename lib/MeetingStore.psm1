@@ -188,7 +188,8 @@ class MeetingStore {
         return $this.RestoreZip([System.IO.File]::ReadAllBytes($this.BackupPath($name)))
     }
 
-    # Summaries for the sidebar: {id,title,date,time,type,savedAt,series,hasGoal,agendaCount,beforeChecks},
+    # Summaries for the sidebar: {id,title,date,time,type,savedAt,series,hasGoal,agendaCount,beforeChecks,
+    # decisionCount,actionCount,goalmet},
     # newest first (by date, then start time).
     # $query is a case-insensitive substring match on the meeting's own text (see SearchText).
     [object[]] List([string] $query) {
@@ -203,6 +204,10 @@ class MeetingStore {
             if ($null -eq $m.agenda -and $m.fields.agenda) {
                 $agendaCount = @(([string]$m.fields.agenda) -split "`n" | Where-Object { $_.Trim() }).Count
             }
+            # For past meetings in the list: what came out of it ("2 decisions - 4 actions").
+            $decisionCount = @($m.agenda | Where-Object { ([string]$_.d).Trim() }).Count +
+                             @(([string]$m.fields.decisions) -split "`n" | Where-Object { $_.Trim() }).Count
+            $actionCount = @($m.actions | Where-Object { ([string]$_.a).Trim() }).Count
             $items.Add([pscustomobject]@{
                 id             = [System.IO.Path]::GetFileNameWithoutExtension($file)
                 title          = $m.fields.title
@@ -216,6 +221,9 @@ class MeetingStore {
                 hasGoal        = [bool]([string]$m.fields.goal).Trim()
                 agendaCount    = $agendaCount
                 beforeChecks   = [MeetingStore]::CheckedIn($m.checks, 'before')
+                decisionCount  = $decisionCount
+                actionCount    = $actionCount
+                goalmet        = [string]$m.fields.goalmet
             })
         }
         return @($items | Sort-Object -Property @{ Expression = { "$($_.date)" }; Descending = $true },

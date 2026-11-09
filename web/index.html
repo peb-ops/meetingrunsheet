@@ -16,6 +16,8 @@
     <section class="side cal" id="cal" aria-labelledby="calMonth">
       <div class="cal-head">
         <h2 id="calMonth" aria-live="polite"></h2>
+        <!-- On the Past tab the calendar folds to this line, so the list gets the room (setupListTabs) -->
+        <button class="sm" id="calShow" aria-controls="calGrid" aria-expanded="false" hidden>Show</button>
         <button class="ghost sm" id="calToday">Today</button>
         <button class="icon sm" id="calPrev" aria-label="Previous month">&lsaquo;</button>
         <button class="icon sm" id="calNext" aria-label="Next month">&rsaquo;</button>
@@ -28,8 +30,14 @@
         <h2 id="meetingsH">Meetings</h2>
         <button class="primary" id="newBtn" title="Start a blank meeting">+ New</button>
       </div>
+      <div class="tabs" role="tablist" aria-label="Which meetings">
+        <button role="tab" id="tabUp" data-tab="up" aria-controls="list" aria-selected="true">Upcoming <b id="countUp"></b></button>
+        <button role="tab" id="tabPast" data-tab="past" aria-controls="list" aria-selected="false">Past <b id="countPast"></b></button>
+      </div>
       <input id="search" type="search" placeholder="Search titles, notes, people..." aria-label="Search meetings">
-      <div class="list" id="list"></div>
+      <div class="list" id="list" role="tabpanel"></div>
+      <!-- Upcoming tab: the latest past meeting stays one click away (renderList in app.js) -->
+      <button class="last-meeting" id="lastMeeting" hidden></button>
     </section>
   </aside>
 

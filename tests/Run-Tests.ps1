@@ -382,6 +382,7 @@ try {
     $s2 = @($r.Json) | Where-Object { $_.id -eq $u2 }
     Check 'summary has start time and prep info' ($s1.time -eq '14:00' -and $s1.hasGoal -eq $true -and $s1.agendaCount -eq 1 -and @($s1.beforeChecks).Count -eq 2 -and $s1.date -eq $next)
     Check 'summary prep info for an unprepared meeting' ($s2.hasGoal -eq $false -and $s2.agendaCount -eq 0)
+    Check 'summary counts decisions and actions' ($s1.actionCount -eq 1 -and $s1.decisionCount -eq 0 -and $s2.actionCount -eq 0 -and $s1.goalmet -eq '') "(got $($s1.decisionCount)/$($s1.actionCount))"
     $found = @((Invoke-Api GET '/api/meetings?q=RISKS').Json)
     Check 'search finds agenda items and text with an apostrophe' ($found.Count -eq 1 -and $found[0].id -eq $u1 -and @((Invoke-Api GET '/api/meetings?q=can%27t%20wait').Json).Count -eq 1)
     Check 'summary and file carry the series of a repeated meeting' ($s1.series -eq 'weekly-1' -and $s2.series -eq '' -and (Invoke-Api GET "/api/meetings/$u1").Json.series -eq 'weekly-1')
@@ -425,7 +426,7 @@ try {
         Check 'list has no action badges'         ($dom -notmatch 'class="pill (open|overdue)"' -and $dom -notmatch '\d+ (open|overdue)<')
         Check 'timer bar is present and hidden'   ($dom -match 'id="timerBar"[^>]*hidden')
         Check 'agenda editor shows one empty row' ((& $count 'id="ag-t-') -eq 1)
-        Check 'agenda item is a wrapping box with a time rail' ($dom -match '<td class="at"[^>]*></td><td class="n">1</td>' -and $dom -match '<textarea id="ag-t-0"[^>]*></textarea><span aria-hidden="true"> </span>')
+        Check 'agenda item is a wrapping box with a time rail' ($dom -match '<td class="at"[^>]*></td><td class="n"><span>1</span></td>' -and $dom -match '<textarea id="ag-t-0"[^>]*></textarea><span aria-hidden="true"> </span>')
         Check 'agenda item has a closed record with an action list' ($dom -match 'class="rec-toggle"[^>]*aria-expanded="false"' -and $dom -match 'id="ag-rec-0"[^>]*hidden' -and $dom -match '<div class="rec-acts"><button class="ghost sm">\+ Add action</button></div>')
         Check 'the summary is on the page' ($dom -match 'id="summary"><div class="sum-none">Nothing recorded yet\.</div>')
         Check 'other decisions is a list with one empty row' ((& $count 'id="dec-') -eq 1 -and $dom -notmatch 'id="f-decisions"')
@@ -443,7 +444,9 @@ try {
         Check 'menu has backup and restore'       ($dom -match 'id="backupBtn"' -and $dom -match 'id="restoreBtn"')
         Check 'no action tracking on the page'    ($dom -notmatch 'id="(csvBtn|ticketBtn|ticketBox|actionsBtn|actionsView)"')
         Check 'calendar grid has 42 days'         ((& $count 'class="day') -eq 42) "(got $(& $count 'class="day'))"
-        Check 'list has Upcoming and Past groups' ($dom -match '<div class="group">Upcoming</div>' -and $dom -match '<div class="group">Past</div>')
+        Check 'list opens on the Upcoming tab, grouped by when' ($dom -match 'id="tabUp"[^>]*aria-selected="true"' -and $dom -match '<div class="group">Later</div>' -and $dom -notmatch 'class="month"')
+        Check 'tabs count upcoming and past meetings' ($dom -match '<b id="countUp">2</b>' -and $dom -match '<b id="countPast">\d+</b>')
+        Check 'the latest past meeting shows under the list' ($dom -match '<button class="last-meeting" id="lastMeeting"[^>]*><span class="lm-text"><span class="lm-when">Last meeting')
         Check 'readiness badges show'             ($dom -match 'class="pill ready">Ready<' -and $dom -match 'class="pill prep">Needs goal, agenda, prep 1/2<')
         Check 'start time field is present'       ($dom -match 'id="f-time"')
         Check 'section nav lists 6 sections'     ((& $count 'class="jump-link') -eq 6) "(got $(& $count 'class="jump-link'))"
