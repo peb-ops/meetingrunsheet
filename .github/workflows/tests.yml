@@ -9,12 +9,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The run only reads the code; its token can't push, change releases or touch other repos.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # don't leave the token in .git\config for the test steps
 
       - name: Run tests (Windows PowerShell 5.1)
         shell: powershell

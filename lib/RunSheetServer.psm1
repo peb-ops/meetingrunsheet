@@ -86,6 +86,12 @@ class RunSheetServer {
         $req  = $ctx.Request
         $path = $req.Url.AbsolutePath
 
+        # Only answer this machine. Windows listens for "localhost" on every network interface and
+        # matches on the Host header alone, which another computer can fake, so the connection itself
+        # must come from a loopback address. The firewall is then not the only thing in the way.
+        if (-not $req.RemoteEndPoint -or -not [System.Net.IPAddress]::IsLoopback($req.RemoteEndPoint.Address)) {
+            $this.SendText($ctx, 403, 'Forbidden'); return
+        }
         # Only answer requests addressed to this machine (blocks DNS-rebinding tricks).
         if ($req.Headers['Host'] -notmatch "^(localhost|127\.0\.0\.1)(:$($this.Port))?$") {
             $this.SendText($ctx, 403, 'Forbidden'); return

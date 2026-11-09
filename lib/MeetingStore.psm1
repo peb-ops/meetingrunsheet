@@ -29,9 +29,10 @@ class MeetingStore {
         $this.Root = [System.IO.Path]::GetFullPath($root)
     }
 
-    # Ids come from URLs, so callers must check them with IsValidId first.
+    # Ids come from URLs, so callers must check them with IsValidId first. Windows device names
+    # (CON, NUL, COM1, ...) are refused: "NUL.json" can mean the device, not a file in the folder.
     static [bool] IsValidId([string] $id) {
-        return $id -match '^[A-Za-z0-9-]{1,64}$'
+        return $id -match '^[A-Za-z0-9-]{1,64}$' -and $id -notmatch '^(CON|PRN|AUX|NUL|COM\d|LPT\d)$'
     }
 
     static [string] NewId() {
@@ -297,7 +298,7 @@ class MeetingStore {
             foreach ($entry in $zip.Entries) {
                 if (-not $entry.Name) { continue }   # a folder
                 $m = [regex]::Match($entry.FullName, '^([A-Za-z0-9-]{1,64})\.json$')
-                if (-not $m.Success -or $entry.Length -gt 5MB) { $invalid++; continue }
+                if (-not $m.Success -or -not [MeetingStore]::IsValidId($m.Groups[1].Value) -or $entry.Length -gt 5MB) { $invalid++; continue }
                 $id = $m.Groups[1].Value
                 if ($this.Exists($id)) { $skipped++; continue }
 

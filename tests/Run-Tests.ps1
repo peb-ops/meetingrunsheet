@@ -228,6 +228,8 @@ try {
     Check 'DELETE without X-Run-Sheet -> 403' ((Invoke-Api DELETE "/api/meetings/$idA" '' @{ 'X-Run-Sheet' = '0' }).Status -eq 403)
     Check 'unknown id -> 404'                 ((Invoke-Api GET '/api/meetings/does-not-exist').Status -eq 404)
     Check 'invalid id -> 404'                 ((Invoke-Api GET '/api/meetings/bad_id!').Status -eq 404)
+    Check 'Windows device names are not ids'  ((Invoke-Api GET '/api/meetings/NUL').Status -eq 404 -and (Invoke-Api GET '/api/meetings/con').Status -eq 404 -and
+                                               (Invoke-Api PUT '/api/meetings/LPT1' '{"fields":{}}').Status -eq 404 -and (Invoke-Api POST '/api/deleted/aux').Status -eq 404)
     Check 'unknown API path -> 404 JSON'      ((Invoke-Api GET '/api/other').Json.error -eq 'Not found')
     Check 'removed action routes -> 404'      ((Invoke-Api GET '/api/actions').Status -eq 404 -and (Invoke-Api GET '/api/actions.csv').Status -eq 404 -and
         (Invoke-Api PUT "/api/meetings/$idA/actions/act1" '{"done":true}').Status -eq 404)
@@ -298,9 +300,11 @@ try {
         '20260101-000000-bbbbbb.json'     = 'not json'
         '20260101-000000-cccccc.json'     = '{"fields":{"title":"x"},"id":"some-other-id"}'
         'notes.txt'                       = 'hello'
+        'NUL.json'                        = '{"fields":{"title":"x"}}'
+        'com1.json'                       = '{"fields":{"title":"x"}}'
     }
     $r = Invoke-Raw POST '/api/backup' $odd
-    Check 'restore skips paths, bad ids and bad files' ($r.Json.added -eq 0 -and $r.Json.invalid -eq 6 -and @(Get-ChildItem -LiteralPath $data -File).Count -eq 2 -and -not (Test-Path (Join-Path $work 'escape.json'))) "($($r.Json | ConvertTo-Json -Compress))"
+    Check 'restore skips paths, bad ids and bad files' ($r.Json.added -eq 0 -and $r.Json.invalid -eq 8 -and @(Get-ChildItem -LiteralPath $data -File).Count -eq 2 -and -not (Test-Path (Join-Path $work 'escape.json'))) "($($r.Json | ConvertTo-Json -Compress))"
 
     # A meeting file with no "id" inside: later writes must still go to the file it came from.
     $noId = '20260102-000000-dddddd'
