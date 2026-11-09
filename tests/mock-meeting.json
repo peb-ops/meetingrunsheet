@@ -1,0 +1,59 @@
+{
+  "fields": {
+    "title": "Milestone 3 triage (mock data)",
+    "type": "triage",
+    "date": "2026-11-09",
+    "time": "14:00",
+    "length": "60",
+    "goal": "Agree what ships in Milestone 3 and who owns the open risks",
+    "notetaker": "Priya",
+    "decisions": "Code freeze moves to Friday 18:00\nNo new features after the freeze without producer sign-off",
+    "parking": "Localisation vendor contract renewal\nBuild farm disk space",
+    "reflect": "",
+    "goalmet": "partly"
+  },
+  "checks": { "before:send-agenda": true },
+  "agenda": [
+    {
+      "id": "mockag1",
+      "t": "Crash on level load (PS5 devkit)",
+      "m": 15,
+      "d": "Fix before the milestone build; block the build until it is in",
+      "n": "Repro rate is about 1 in 20 loads on the devkit, none on PC\nCrash dump points at the streaming system, not the new shaders\nSeen since the asset bundle change last Tuesday\nQA can give a repro save by tomorrow morning"
+    },
+    {
+      "id": "mockag2",
+      "t": "Cloud saves: ship or cut",
+      "m": 15,
+      "d": "Cut from Milestone 3, revisit for Milestone 4",
+      "n": "Backend is ready but the conflict UI is not designed yet\nCert risk is high if save conflicts are not handled\nMarketing has not announced the feature, so cutting is cheap"
+    },
+    {
+      "id": "mockag3",
+      "t": "Controller remapping feedback from playtest",
+      "m": 20,
+      "nd": true,
+      "n": "Four of twelve testers could not find the remapping menu\nTwo testers asked for per-profile layouts\nUX wants to move the menu under Settings > Controls\nAccessibility review flagged missing one-handed presets\nNo agreement yet on whether presets are in scope"
+    },
+    {
+      "id": "mockag4",
+      "t": "Open floor",
+      "m": 10,
+      "d": "Hold a short audio sync on Wednesday",
+      "n": "Audio team needs final cinematics timing by Thursday\nBuild times went up about 10 percent this week\nNew QA contractor starts Monday"
+    }
+  ],
+  "attendees": [ "Priya", "Marco", "Jun", "Sofia", "Dev (QA lead)" ],
+  "actions": [
+    { "id": "mockact1", "a": "Send repro save and devkit logs to engineering", "o": "Dev (QA lead)", "g": "mockag1" },
+    { "id": "mockact2", "a": "Bisect the asset bundle change and post findings", "o": "Marco", "g": "mockag1" },
+    { "id": "mockact3", "a": "Add a crash-free load check to the milestone build gate", "o": "Jun", "g": "mockag1" },
+    { "id": "mockact4", "a": "Tell marketing and the backend team cloud saves move to M4", "o": "Priya", "g": "mockag2" },
+    { "id": "mockact5", "a": "Draft two options for the remapping menu location", "o": "Sofia", "g": "mockag3" },
+    { "id": "mockact6", "a": "Ask accessibility consultant which presets are must-have", "o": "", "g": "mockag3" },
+    { "id": "mockact7", "a": "Send cinematics timing to audio", "o": "Marco", "g": "mockag4" },
+    { "id": "mockact8", "a": "Book the build farm review", "o": "Jun" }
+  ],
+  "id": "20261109-140000-mock01",
+  "savedAt": "2026-11-09T15:00:00.000"
+}

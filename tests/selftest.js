@@ -195,6 +195,29 @@
     await wait(800);
     check("Put back returns the meeting as it was", (await saved(id)).fields.parking === "Remapping, again"
       && !document.querySelector("#binDeleted .bin-row") && !!document.querySelector(`#list .item[data-id="${id}"]`));
+
+    // Last: the mock meeting (tests\mock-meeting.json, copied next to the page). Its notes go into
+    // <pre id="mocknotes"> and the tests print them, so the export can be read after every run.
+    const mock = await (await fetch("mock-meeting.json")).json();
+    const made = await api("POST", "/api/meetings", mock);
+    await openMeeting(made.id);
+    const mn = notes(false);
+    const pos = s => mn.indexOf(s);
+    const heads = [1, 2, 3, 4].map(n => pos(`\n${n}. `));
+    check("mock meeting opens with 4 agenda items and 8 actions", state.agenda.length === 4 && state.actions.length === 8);
+    check("mock notes list the 4 items in order", heads.every(p => p > 0) && heads.every((p, i) => !i || p > heads[i - 1]));
+    check("mock notes keep each item notes and action points under that item", pos("Repro rate") > heads[0] && pos("Bisect the asset bundle") < heads[1]
+      && pos("Cert risk") > heads[1] && pos("Tell marketing") < heads[2] && pos("Four of twelve") > heads[2]
+      && pos("Draft two options") < heads[3] && pos("Send cinematics timing") > heads[3]);
+    check("mock notes flag the unassigned action and list the loose one last", mn.includes("presets are must-have (Owner: UNASSIGNED)")
+      && pos("Action points with no agenda item") > heads[3] && pos("Book the build farm review") > pos("Action points with no agenda item")
+      && pos("Parking lot") > pos("Book the build farm review"));
+    const mh = notes("html");
+    check("mock notes as HTML have 4 item headings", (mh.match(/<h3>\d\. /g) || []).length === 4);
+    const mp = document.createElement("pre");
+    mp.id = "mocknotes";
+    mp.textContent = mn;
+    document.body.append(mp);
   } catch (e) {
     out.push("FAIL selftest stopped early: " + String(e && e.message).replace(/[&<>"']/g, " "));
   }

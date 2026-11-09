@@ -143,6 +143,7 @@ function Get-Summary([string]$Id) {
 $hostExe = (Get-Process -Id $PID).Path
 $serverArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$appDir\MeetingRunSheet.ps1`" -Port $Port -DataDir `"$data`" -NoBrowser"
 $server2 = $null   # a second server for the page interaction checks, started further down
+$mockNotes = $null   # Copy notes of the mock meeting, printed at the end
 $server = Start-Process -FilePath $hostExe -ArgumentList $serverArgs -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $work 'server.out') -RedirectStandardError (Join-Path $work 'server.err')
 
@@ -462,6 +463,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $appDir 'lib') -Destination $app2 -Recurse
         Copy-Item -LiteralPath (Join-Path $appDir 'web') -Destination $app2 -Recurse
         Copy-Item -LiteralPath (Join-Path $testsDir 'selftest.js') -Destination (Join-Path $app2 'web')
+        Copy-Item -LiteralPath (Join-Path $testsDir 'mock-meeting.json') -Destination (Join-Path $app2 'web')
         $index = Join-Path $app2 'web\index.html'
         [System.IO.File]::WriteAllText($index, [System.IO.File]::ReadAllText($index).Replace('</body>', '<script src="selftest.js"></script></body>'), (New-Object System.Text.UTF8Encoding($false)))
         Copy-Item -LiteralPath (Join-Path $data "$idA.json") -Destination $data2
@@ -486,6 +488,8 @@ try {
         foreach ($line in $lines) { Check ('page: ' + $line.Substring(5)) ($line.StartsWith('PASS ')) }
         Check 'Delete then Put back left nothing in the deleted folder' ((Test-Path (Join-Path $data2 'deleted')) -and @(Get-ChildItem -Path (Join-Path $data2 'deleted') -Filter '*.json').Count -eq 0)
         Check 'page settings are a file in the data folder' (Test-Path (Join-Path $data2 'settings\page.json'))
+        $mock = [regex]::Match($dom, '<pre id="mocknotes">([\s\S]*?)</pre>')
+        if ($mock.Success) { $mockNotes = [System.Net.WebUtility]::HtmlDecode($mock.Groups[1].Value) }
     }
 } finally {
     if ($server2 -and -not $server2.HasExited) { Stop-Process -Id $server2.Id -Force }
@@ -498,6 +502,28 @@ try {
     Start-Sleep -Milliseconds 300
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# The mock meeting, always last: its Copy notes text, and the file in test-data\ so it can be opened
+# in the app (-DataDir .	est-data -Port 8090). Only that one file is written there.
+Write-Host ''
+Write-Host 'Mock meeting (tests\mock-meeting.json)'
+$mockSrc = Join-Path $testsDir 'mock-meeting.json'
+$mockDir = Join-Path $appDir 'test-data'
+try {
+    New-Item -ItemType Directory -Path $mockDir -Force | Out-Null
+    Copy-Item -LiteralPath $mockSrc -Destination (Join-Path $mockDir '20261109-140000-mock01.json') -Force
+    Check 'mock meeting copied to test-data' (Test-Path (Join-Path $mockDir '20261109-140000-mock01.json'))
+} catch {
+    Check 'mock meeting copied to test-data' $false $_.Exception.Message
+}
+if ($mockNotes) {
+    Write-Host '--- Copy notes ---' -ForegroundColor Cyan
+    Write-Host ($mockNotes.TrimEnd() -replace '[^\x20-\x7E\r\n]', '-')   # the console may not show the middle dot
+    Write-Host '------------------' -ForegroundColor Cyan
+} else {
+    Write-Host '  (no notes: the page checks did not run, Edge not found?)' -ForegroundColor Yellow
+}
+Write-Host "  Open it: powershell -NoProfile -ExecutionPolicy Bypass -File .\MeetingRunSheet.ps1 -Port 8090 -DataDir .\test-data"
 
 Write-Host ''
 $color = if ($script:failed) { 'Red' } else { 'Green' }
