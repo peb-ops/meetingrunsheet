@@ -306,9 +306,9 @@ table.row-table{min-width:0}
    Closed, .rec-sum shows what is recorded as one line (showRecord in app.js). */
 .t-line{display:flex;align-items:flex-start;gap:4px}
 .t-line .grow{flex:1;min-width:0}
-.rec-toggle{flex:none;margin-top:5px;padding:3px 8px;font-size:12.5px;border-color:transparent;background:transparent;color:var(--faint)}
-.rec-toggle:hover{color:var(--ink)}
-.rec-toggle[aria-expanded="true"]{background:var(--accent-soft);color:var(--accent)}
+.rec-toggle{flex:none;margin-top:4px;padding:4px 10px;font-size:13px;font-weight:600;border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent)}
+.rec-toggle:hover{background:var(--accent);color:var(--accent-ink)}
+.rec-toggle[aria-expanded="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .rec-sum{display:block;max-width:100%;margin:0 0 6px 10px;padding:1px 8px;border:0;border-left:3px solid var(--line-strong);border-radius:0;background:transparent;text-align:left;font-size:13.5px;font-weight:400;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rec-sum.decided{border-left-color:var(--done);color:var(--ink);white-space:normal;overflow-wrap:anywhere}
 .rec{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 10px;align-items:start;margin:2px 0 8px 10px}
