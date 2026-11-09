@@ -1,0 +1,73 @@
+name: Tests
+
+# Runs tests\Run-Tests.ps1 on Windows PowerShell 5.1 (with headless Edge) on every push and pull request.
+# Each run's page shows a summary: pass/fail counts, any failed checks and the mock meeting's Copy notes.
+# The full console output is attached to the run as "test-output".
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1 | Tee-Object -FilePath test-output.txt
+          $code = $LASTEXITCODE
+          $out = Get-Content test-output.txt
+          if (-not ($out -match '^\s*PASS\s+interaction script ran')) {
+            Write-Host '::error::The page checks did not run (headless Edge missing or failed).'
+            $code = 1
+          }
+          exit $code
+
+      - name: Write run summary
+        if: always()
+        shell: powershell
+        run: |
+          $out = @(Get-Content test-output.txt -ErrorAction SilentlyContinue)
+          $s = New-Object System.Collections.Generic.List[string]
+          $total = $out | Where-Object { $_ -match '^\d+ passed, \d+ failed' } | Select-Object -Last 1
+          if (-not $total) { $total = 'The test run did not finish' }
+          $icon = if ($total -match ', 0 failed') { ':white_check_mark:' } else { ':x:' }
+          $s.Add("## $icon Tests: $total")
+          $s.Add('')
+          $failed = @($out | Where-Object { $_ -match '^\s*FAIL\s' } | ForEach-Object { $_.Trim() })
+          if ($failed.Count) {
+            $s.Add('### Failed checks')
+            $s.Add('')
+            $failed | ForEach-Object { $s.Add('- ' + $_) }
+            $s.Add('')
+          }
+          $start = [array]::IndexOf($out, ($out | Where-Object { $_ -eq '--- Copy notes ---' } | Select-Object -First 1))
+          $end = [array]::IndexOf($out, ($out | Where-Object { $_ -eq '------------------' } | Select-Object -Last 1))
+          if ($start -ge 0 -and $end -gt $start) {
+            $s.Add('### Mock meeting: Copy notes')
+            $s.Add('')
+            $s.Add('```text')
+            $out[($start + 1)..($end - 1)] | ForEach-Object { $s.Add($_) }
+            $s.Add('```')
+            $s.Add('')
+          }
+          $s.Add('<details><summary>All checks</summary>')
+          $s.Add('')
+          $s.Add('```text')
+          $out | Where-Object { $_ -match '^\s*(PASS|FAIL)\s' } | ForEach-Object { $s.Add($_.Trim()) }
+          $s.Add('```')
+          $s.Add('</details>')
+          [System.IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, ($s -join "`n") + "`n")
+
+      - name: Keep the console output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.txt
