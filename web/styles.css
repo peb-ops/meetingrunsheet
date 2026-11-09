@@ -321,6 +321,11 @@ table.row-table{min-width:0}
 .rec > span.label{padding-top:9px}
 .rec-acts{display:flex;flex-direction:column;gap:4px;min-width:0}
 .rec-acts > button{align-self:flex-start}
+.rec-notes{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rec-notes > button{align-self:flex-start}
+.note-line{display:grid;grid-template-columns:minmax(0,1fr) 28px;gap:6px;align-items:start}
+.note-line button.x{margin-top:4px;padding:3px 7px;border-color:transparent;background:transparent;color:var(--faint)}
+.note-line button.x:hover{background:var(--field);color:var(--ink)}
 /* Two rows, so the text has the full width: the action, then owner | remove */
 .act-line{display:grid;grid-template-columns:minmax(0,1fr) 28px;gap:4px 6px;align-items:center;padding-bottom:6px}
 .act-line .grow{grid-column:1/-1}

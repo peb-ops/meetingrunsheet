@@ -359,8 +359,8 @@ const agendaEditor = rowEditor({
         <div class="grow"><textarea id="ag-d-${i}" rows="1" placeholder="What was decided, in one line"></textarea><span aria-hidden="true"></span></div>
         <span></span>
         <label class="open-flag" for="ag-o-${i}"><input type="checkbox" id="ag-o-${i}"> Left open: no decision was made</label>
-        <label class="label" for="ag-n-${i}">Notes</label>
-        <div class="grow"><textarea id="ag-n-${i}" rows="2" placeholder="Key points of the discussion"></textarea><span aria-hidden="true"></span></div>
+        <span class="label">Notes</span>
+        <div class="rec-notes"></div>
         <span class="label">Actions</span>
         <div class="rec-acts"></div>
       </div></td>
@@ -369,11 +369,11 @@ const agendaEditor = rowEditor({
     const title = tr.querySelector(`#ag-t-${i}`);
     const min = tr.querySelector(`#ag-m-${i}`);
     const decision = tr.querySelector(`#ag-d-${i}`);
-    const itemNotes = tr.querySelector(`#ag-n-${i}`);
+    const notesBox = tr.querySelector(".rec-notes");
     growBox(title, row.t, true, v => { row.t = v; agendaChanged(); });
     growBox(decision, row.d, true, v => { row.d = v; agendaChanged(); });
-    growBox(itemNotes, row.n, false, v => { row.n = v; agendaChanged(); });
-    decision.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); itemNotes.focus(); } };
+    fillNotes(notesBox, row, i);
+    decision.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); notesBox.querySelector("textarea").focus(); } };
     const open = tr.querySelector(`#ag-o-${i}`);
     open.checked = !!row.nd;
     open.onchange = () => { row.nd = open.checked; agendaChanged(); };
@@ -389,12 +389,54 @@ const agendaEditor = rowEditor({
   },
 });
 
+// An item's notes as a list: one note per line of row.n (so files keep the same format, and an
+// older multi-line note opens as one note per line). The rows being edited, empty ones included,
+// are kept per agenda row so a note still being typed survives a redraw of the agenda.
+const noteRows = new WeakMap();
+function itemNoteRows(row) {
+  if (!noteRows.has(row)) {
+    const rows = String(row.n || "").split("\n").map(s => s.trim()).filter(Boolean);
+    noteRows.set(row, rows.length ? rows : [""]);
+  }
+  return noteRows.get(row);
+}
+
+// Fills an agenda item's notes: a wrapping box per note (Enter adds the next), x, "+ Add note".
+function fillNotes(box, row, item) {
+  const notes = itemNoteRows(row);
+  const changed = () => { row.n = notes.map(s => s.trim()).filter(Boolean).join("\n"); agendaChanged(); };
+  const add = at => {
+    notes.splice(at, 0, "");
+    draw();
+    box.querySelectorAll("textarea")[at].focus();
+  };
+  const noteLine = (text, j) => {
+    const line = elem("div", "note-line");
+    line.innerHTML = `<div class="grow"><textarea id="ag-n-${item}-${j}" rows="1" aria-label="Note ${j + 1}" placeholder="${j ? "Next point" : "A key point of the discussion"}"></textarea><span aria-hidden="true"></span></div>
+      <button class="x" aria-label="Remove note">&times;</button>`;
+    const input = line.querySelector("textarea");
+    growBox(input, text, true, v => { notes[j] = v; changed(); });
+    input.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); add(j + 1); } };
+    line.querySelector("button.x").onclick = () => {
+      notes.splice(j, 1);
+      if (!notes.length) notes.push("");
+      changed();
+      draw();
+    };
+    return line;
+  };
+  const more = elem("button", "ghost sm", "+ Add note");
+  more.onclick = () => add(notes.length);
+  const draw = () => box.replaceChildren(...notes.map(noteLine), more);
+  draw();
+}
+
 // Draws a row's record open or closed. Closed, a row with something recorded shows it as one line
 // under the title: the decision in full (or the start of the notes), and how many actions it has.
 function showRecord(tr, row) {
   const open = openRecs.has(row);
   const decision = (row.d || "").trim();
-  const itemNotes = (row.n || "").trim().replace(/\s+/g, " ");
+  const itemNotes = (row.n || "").split("\n").map(s => s.trim()).filter(Boolean).join(" / ");
   const acts = state.actions.filter(a => a.g === row.id && a.a && a.a.trim()).length;
   const sum = tr.querySelector(".rec-sum");
   tr.querySelector(".rec").hidden = !open;

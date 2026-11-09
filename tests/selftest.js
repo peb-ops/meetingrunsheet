@@ -40,6 +40,10 @@
     row(0).querySelector(".rec-toggle").click();
     check("Notes opens the item record", !row(0).querySelector(".rec").hidden);
     type($("#ag-d-0"), "Ship it");
+    type($("#ag-n-0-0"), "Risk is low");
+    enter($("#ag-n-0-0"));
+    check("Enter adds another note to the item", !!$("#ag-n-0-1") && document.activeElement === $("#ag-n-0-1"));
+    type($("#ag-n-0-1"), "QA signed off");
     row(0).querySelector(".rec-acts > button").click();
     const line = row(0).querySelector(".act-line");
     type(line.querySelector("textarea"), "Write it up");
@@ -65,6 +69,7 @@
     const act = state.actions.find(a => a.a === "Write it up");
     check("a reopened meeting has what was typed", state.fields.title === "Self test" && state.attendees.join() === "Ana,Bo"
       && state.agenda.length === 2 && state.agenda[0].d === "Ship it" && state.agenda[0].m === 10 && state.agenda[1].nd === true
+      && state.agenda[0].n === "Risk is low\nQA signed off"
       && !!act && act.o === "Bo" && act.g === state.agenda[0].id
       && state.fields.decisions === "Move the playtest" && state.fields.parking === "Remapping");
     check("an action is saved as text and owner only", !!act && !("d" in act) && !("t" in act) && !("done" in act));
