@@ -167,8 +167,6 @@ textarea{resize:vertical;min-height:72px;line-height:1.55}
 .lm-title{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lm-all{font-size:12.5px;font-weight:600;color:var(--accent);white-space:nowrap;padding:4px 0}
 .lm-all:hover{text-decoration:underline}
-/* The calendar folded to its title line (Past tab) */
-.side.cal.folded .cal-grid,.side.cal.folded .cal-list,.side.cal.folded #calToday,.side.cal.folded #calPrev,.side.cal.folded #calNext{display:none}
 .empty{color:var(--muted);font-size:13.5px;padding:10px}
 .group{font-size:12px;font-weight:600;color:var(--faint);padding:10px 10px 2px}
 .group:first-child{padding-top:2px}

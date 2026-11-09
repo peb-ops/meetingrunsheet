@@ -974,11 +974,10 @@ async function loadList() {
 
 /* Two tabs: Upcoming (today and later, soonest first, grouped Today / This week / Later) and Past
    (newest first, as the server sends them, in months that fold). The tab is kept in localStorage
-   runsheet-list-tab. On the Past tab the calendar folds to one line unless it was asked for. */
+   runsheet-list-tab. */
 const LIST_TAB_KEY = "runsheet-list-tab";
 let listTab = "up";
 try { if (localStorage.getItem(LIST_TAB_KEY) === "past") listTab = "past"; } catch (e) { /* no storage */ }
-let calShown = false;          // calendar opened while on the Past tab
 const openMonths = new Set();  // past months unfolded ("yyyy-MM"); the newest two start open
 let monthsSeeded = false;
 
@@ -991,13 +990,11 @@ function setupListTabs() {
       $(listTab === "up" ? "#tabUp" : "#tabPast").focus();
     };
   });
-  $("#calShow").onclick = () => { calShown = !calShown; showCalFold(); };
   showListTab();
 }
 
 function setListTab(tab) {
   listTab = tab;
-  calShown = false;
   try { localStorage.setItem(LIST_TAB_KEY, tab); } catch (e) { /* no storage */ }
   showListTab();
   renderList($("#search").value.trim());
@@ -1011,15 +1008,6 @@ function showListTab() {
     tab.tabIndex = t === listTab ? 0 : -1;
   });
   $("#search").placeholder = listTab === "past" ? "Search past meetings..." : "Search titles, notes, people...";
-  showCalFold();
-}
-
-function showCalFold() {
-  const folded = listTab === "past" && !calShown;
-  $("#cal").classList.toggle("folded", folded);
-  $("#calShow").hidden = listTab !== "past";
-  $("#calShow").textContent = folded ? "Show" : "Hide";
-  $("#calShow").setAttribute("aria-expanded", !folded);
 }
 
 // "Wed 11" for a "yyyy-MM-dd" date.

@@ -206,12 +206,10 @@
       agenda: [{ t: "Scope", m: 10, d: "Keep it small" }], actions: [{ id: "x1", a: "Write it down", o: "Ana" }] });
     await loadList();
     setListTab("up");
-    check("Upcoming shows no months and the calendar", !document.querySelector("#list .month") && !$("#cal").classList.contains("folded") && $("#calShow").hidden);
+    check("Upcoming shows no months", !document.querySelector("#list .month"));
     setListTab("past");
     const jan = [...document.querySelectorAll("#list .month")].find(b => b.textContent.startsWith("January 2020"));
-    check("Past folds the calendar and lists meetings by month", $("#cal").classList.contains("folded") && !$("#calShow").hidden && !!jan);
-    $("#calShow").click();
-    check("Show unfolds the calendar", !$("#cal").classList.contains("folded") && $("#calShow").textContent === "Hide");
+    check("Past lists meetings by month and keeps the calendar", !!jan && getComputedStyle($("#calGrid")).display !== "none");
     if (jan.getAttribute("aria-expanded") !== "true") jan.click();
     const old = [...document.querySelectorAll("#list .item")].find(b => b.textContent.includes("Old review"));
     check("a past meeting shows its decisions, actions and goal", !!old && old.textContent.includes("1 decision") && old.textContent.includes("1 action") && old.textContent.includes("Goal met"));
