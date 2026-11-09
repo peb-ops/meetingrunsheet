@@ -353,7 +353,7 @@ class MeetingStore {
     }
 
     # ---- Page settings ----
-    # The theme and the sidebar choice, in "settings\page.json" inside the data folder (a subfolder,
+    # The theme, the sidebar choice and the Settings page switches, in "settings\page.json" inside the data folder (a subfolder,
     # so the file is never taken for a meeting). Only the known keys are kept.
 
     [string] ReadSettings() {
@@ -368,7 +368,10 @@ class MeetingStore {
         $sent = $json | ConvertFrom-Json
         $theme = ''
         if ($sent.theme -is [string] -and $sent.theme -match '^[a-z]{1,20}$') { $theme = $sent.theme }
-        $text = ConvertTo-Json -InputObject ([ordered]@{ theme = $theme; sideOff = ($sent.sideOff -eq $true) }) -Compress
+        $kept = [ordered]@{ theme = $theme; sideOff = ($sent.sideOff -eq $true) }
+        # Switches on the Settings page: on unless sent as false.
+        foreach ($key in @('timebox', 'autosave', 'checklist', 'nav')) { $kept[$key] = -not ($sent.$key -is [bool] -and -not $sent.$key) }
+        $text = ConvertTo-Json -InputObject $kept -Compress
         $dir = [System.IO.Path]::Combine($this.Root, 'settings')
         [void][System.IO.Directory]::CreateDirectory($dir)
         $path = [System.IO.Path]::Combine($dir, 'page.json')

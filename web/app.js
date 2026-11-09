@@ -117,7 +117,7 @@ function markClean() {
 const AUTOSAVE_MS = 20000;
 
 function planAutosave() {
-  if (autoTimer || autoOff || phase !== "run" || !state.id) return;
+  if (autoTimer || autoOff || !prefs.autosave || phase !== "run" || !state.id) return;
   autoTimer = setTimeout(autosave, AUTOSAVE_MS);
 }
 
@@ -165,7 +165,8 @@ function showStrips() {
   const missing = items.some(it => it.min === null);
   const timebox = +f.length || 0;
   const over = timebox > 0 && total > timebox;
-  item("#rAgenda", items.length > 0 && !over && !missing, "Agenda",
+  if (!prefs.timebox) item("#rAgenda", items.length > 0, "Agenda", items.length ? `${items.length} item${items.length > 1 ? "s" : ""}` : "empty");
+  else item("#rAgenda", items.length > 0 && !over && !missing, "Agenda",
     !items.length ? "empty" : missing ? "has items without minutes" : over ? `is ${total} min, timebox ${timebox}`
       : timebox ? `${total} of ${timebox} min` : `${total} min, no timebox`);
 
@@ -233,7 +234,7 @@ const leftOpen = r => !!r.nd && !(r.d && r.d.trim());
 function agendaItems() {
   return (state.agenda || [])
     .filter(agendaFilled)
-    .map(r => ({ id: r.id, title: (r.t || "").trim() || "Untitled item", min: +r.m > 0 ? +r.m : null }));
+    .map(r => ({ id: r.id, title: (r.t || "").trim() || "Untitled item", min: prefs.timebox && +r.m > 0 ? +r.m : null }));
 }
 
 // Rows to save: drops empty ones. d and n are only written when there is something in them.
@@ -633,7 +634,7 @@ function showSummary() {
 // starts after it "cut" (the "Timebox ends" line). Also refreshes the timer's current-item mark.
 function showAgendaTimes() {
   const start = /^(\d\d):(\d\d)$/.exec(state.fields.time || "");
-  const timebox = +state.fields.length || 0;
+  const timebox = prefs.timebox ? +state.fields.length || 0 : 0;
   const two = n => String(n).padStart(2, "0");
   let at = 0, unsure = false, cut = false;
   state.agenda.forEach((row, i) => {
@@ -1109,7 +1110,7 @@ function readiness(m) {
   const missing = [];
   if (!m.hasGoal) missing.push("goal");
   if (!m.agendaCount) missing.push("agenda");
-  if (done < before.length) missing.push(`prep ${done}/${before.length}`);
+  if (prefs.checklist && done < before.length) missing.push(`prep ${done}/${before.length}`);
   return missing.length ? { text: "Needs " + missing.join(", "), ready: false } : { text: "Ready", ready: true };
 }
 
@@ -1678,47 +1679,89 @@ function setupMenu() {
   document.addEventListener("keydown", e => { if (e.key === "Escape") setOpen(false); });
 }
 
-// Theme entry in the "..." menu: opens the list of THEMES under it, with a tick on the one in use.
-// theme.js holds the choice and applies it. The menu stays open, so themes can be tried in turn.
-function setupTheme() {
-  const btn = $("#themeBtn");
-  const list = $("#themeList");
-  THEMES.forEach(([key, name]) => {
-    const b = document.createElement("button");
-    b.setAttribute("role", "menuitemradio");
+/* ---- Settings page ----
+   Opened with the gear button or Settings in the "..." menu; shown instead of the run sheet until
+   Done, Esc or a phase tab. Theme (THEMES / themeChoice in theme.js), the sidebar, and the switches
+   in prefs (theme.js). Every change applies at once, is kept in this browser and goes to the server. */
+function setupSettings() {
+  const tiles = $("#themeTiles");
+  THEMES.forEach(([key, name, colours]) => {
+    const b = elem("button", "theme-tile");
+    b.setAttribute("role", "radio");
     b.dataset.theme = key;
-    b.textContent = name;
-    b.onclick = e => {
-      e.stopPropagation();
-      setTheme(key);
+    const sw = elem("span", "swatch");
+    sw.setAttribute("aria-hidden", "true");
+    colours.forEach(c => { const i = document.createElement("i"); i.style.background = c; sw.append(i); });
+    b.append(sw, elem("span", "", name));
+    b.onclick = () => { setTheme(key); pushSettings(); };
+    b.onkeydown = e => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      const at = (THEMES.findIndex(t => t[0] === themeChoice) + step + THEMES.length) % THEMES.length;
+      setTheme(THEMES[at][0]);
       pushSettings();
+      tiles.querySelector(`[data-theme="${THEMES[at][0]}"]`).focus();
     };
-    list.append(b);
+    tiles.append(b);
   });
-  btn.onclick = e => {
-    e.stopPropagation();
-    list.hidden = !list.hidden;
-    btn.setAttribute("aria-expanded", String(!list.hidden));
-  };
+  $("#setSide").onchange = e => { setSidebar(!e.target.checked); pushSettings(); };
+  const switches = { timebox: "#setTimebox", autosave: "#setAutosave", checklist: "#setChecklist", nav: "#setNav" };
+  Object.entries(switches).forEach(([key, id]) => {
+    $(id).onchange = e => { setPref(key, e.target.checked); pushSettings(); };
+  });
+  $("#settingsBtn").onclick = () => showSettings($("#settingsView").hidden);
+  $("#settingsItem").onclick = () => showSettings(true);
+  $("#setDone").onclick = () => showSettings(false);
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !$("#settingsView").hidden && $("#moreMenu").hidden) showSettings(false);
+  });
   setTheme(themeChoice);
 }
 
-// Switches to a theme, remembers it in this browser and ticks it in the menu.
+function showSettings(open) {
+  $("#settingsView").hidden = !open;
+  $("#app").classList.toggle("settings-open", open);
+  $("#settingsBtn").setAttribute("aria-expanded", String(open));
+  if (open) {
+    $("#setSide").checked = !$("#app").classList.contains("side-off");
+    PREF_KEYS.forEach(k => { $("#set" + k[0].toUpperCase() + k.slice(1)).checked = prefs[k]; });
+    window.scrollTo(0, 0);
+    const on = $("#themeTiles").querySelector('[aria-checked="true"]');
+    if (on) on.focus({ preventScroll: true });
+  }
+}
+
+// Switches to a theme, remembers it in this browser and marks it on the Settings page.
 function setTheme(key) {
   themeChoice = key;
   try { if (key) localStorage.setItem(THEME_KEY, key); else localStorage.removeItem(THEME_KEY); } catch (e) {}
   applyTheme();
-  $("#themeBtn").textContent = "Theme: " + THEMES.find(t => t[0] === key)[1];
-  $("#themeList").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", String(b.dataset.theme === key)));
+  $("#themeTiles").querySelectorAll(".theme-tile").forEach(b => {
+    const on = b.dataset.theme === key;
+    b.setAttribute("aria-checked", String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+}
+
+// Turns one of the prefs (theme.js) on or off and redraws what depends on it.
+function setPref(key, on) {
+  prefs[key] = on;
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) {}
+  applyPrefs();
+  if (key === "timebox") { showAgendaSum(); showAgendaTimes(); showStrips(); }
+  if (key === "checklist") { showStrips(); renderList($("#search").value.trim()); highlight(); }
+  if (key === "autosave" && !on) { clearTimeout(autoTimer); autoTimer = null; }
+  if (key === "autosave" && on && dirty) planAutosave();
 }
 
 /* ---- Settings kept with the meetings ----
-   The theme and the sidebar choice live in this browser (localStorage), so the page can draw them
+   The theme, the sidebar choice and the switches (prefs) live in this browser (localStorage), so the page can draw them
    right away. A copy is kept by the server (settings\page.json in the data folder), so another
    browser, or the app on another port, starts with the same choices. */
 
 function pushSettings() {
-  api("PUT", "/api/settings", { theme: themeChoice, sideOff: $("#app").classList.contains("side-off") }).catch(() => {});
+  api("PUT", "/api/settings", Object.assign({ theme: themeChoice, sideOff: $("#app").classList.contains("side-off") }, prefs)).catch(() => {});
 }
 
 // On load: take the stored choices where they differ from this browser's. With nothing stored
@@ -1729,6 +1772,7 @@ async function pullSettings() {
   if (!s || typeof s.theme !== "string") { pushSettings(); return; }
   if (s.theme !== themeChoice && THEMES.some(t => t[0] === s.theme)) setTheme(s.theme);
   if (!!s.sideOff !== $("#app").classList.contains("side-off")) setSidebar(!!s.sideOff);
+  PREF_KEYS.forEach(k => { if (typeof s[k] === "boolean" && s[k] !== prefs[k]) setPref(k, s[k]); });
 }
 
 // Hiding the sidebar gives the run sheet the full width during a meeting.
@@ -1798,6 +1842,7 @@ $("#copyBtn").onclick = $("#copyStripBtn").onclick = () => copyNotes(false);
 $("#copyMdBtn").onclick = $("#copyMdBtn2").onclick = () => copyNotes(true);
 $("#followBtn2").onclick = () => guard(followUp);
 document.querySelectorAll("#phaseTabs button").forEach(b => b.onclick = () => {
+  showSettings(false);
   setPhase(b.dataset.phase);
   window.scrollTo(0, 0);
 });
@@ -1824,7 +1869,7 @@ window.addEventListener("beforeunload", e => {
 
 setupHelp();
 setupMenu();
-setupTheme();
+setupSettings();
 setupSidebar();
 setupCalendar();
 setupListTabs();

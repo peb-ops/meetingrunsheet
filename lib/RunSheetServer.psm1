@@ -14,7 +14,7 @@ using module .\WebRoot.psm1
 #   GET    /api/meetings/{id}  read
 #   PUT    /api/meetings/{id}  update; 409 if the body's savedAt isn't the file's (saved elsewhere since)
 #   DELETE /api/meetings/{id}  delete (the file moves to the "deleted" folder)
-#   GET    /api/settings       page settings {theme, sideOff}, or {} when none are stored
+#   GET    /api/settings       page settings {theme, sideOff, timebox, autosave, checklist, nav}, or {}
 #   PUT    /api/settings       store page settings
 #   GET    /api/backup         zip of every meeting file (download)
 #   POST   /api/backup         restore: body is a backup zip; adds missing meetings, never overwrites

@@ -181,10 +181,25 @@
 
     // Settings follow the sidebar and theme choices.
     $("#sideBtn").click();
-    [...document.querySelectorAll("#themeList button")].find(b => b.dataset.theme === "dark").click();
+    $("#settingsBtn").click();
+    check("the settings page shows instead of the run sheet", !$("#settingsView").hidden && getComputedStyle($("#sheet")).display === "none"
+      && $("#setSide").checked === false && $("#setTimebox").checked === true);
+    $('#themeTiles [data-theme="dark"]').click();
+    const flip = (id, on) => { $(id).checked = on; $(id).dispatchEvent(new Event("change")); };
+    flip("#setTimebox", false);
+    flip("#setChecklist", false);
+    const shown = sel => getComputedStyle($(sel)).display !== "none";
+    check("time boxing off hides the minutes and the timebox", !shown("#lengthField") && !shown("#agendaRows td.min")
+      && agendaItems().every(it => it.min === null) && $("#rAgenda").textContent.includes("item"));
+    check("checklist off hides the checklist and the prep check", !shown("#chkCard") && !shown("#rPrep"));
     await wait(300);
     const s = await api("GET", "/api/settings");
-    check("the sidebar and theme choices are stored with the meetings", s.sideOff === true && s.theme === "dark" && document.documentElement.dataset.theme === "dark");
+    check("the settings are stored with the meetings", s.sideOff === true && s.theme === "dark" && document.documentElement.dataset.theme === "dark"
+      && s.timebox === false && s.checklist === false && s.autosave === true);
+    flip("#setTimebox", true);
+    flip("#setChecklist", true);
+    $("#setDone").click();
+    check("Done goes back to the run sheet with the minutes", $("#settingsView").hidden && shown("#sheet") && shown("#lengthField"));
 
     // Delete.
     await deleteMeeting();

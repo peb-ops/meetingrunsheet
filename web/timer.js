@@ -40,7 +40,7 @@ function countdown(secLeft, warnAt) {
 }
 
 function startTimer() {
-  const timebox = +state.fields.length || 0;
+  const timebox = prefs.timebox ? +state.fields.length || 0 : 0;   // prefs: theme.js
   const agenda = agendaItems();
   const items = agenda.length ? agenda : [{ title: state.fields.title || "Meeting", min: timebox || null }];
 

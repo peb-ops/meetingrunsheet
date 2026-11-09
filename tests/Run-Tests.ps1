@@ -358,6 +358,9 @@ try {
     $r = Invoke-Api PUT '/api/settings' '{"theme":"dark","sideOff":true,"other":"x"}'
     $s = Invoke-Api GET '/api/settings'
     Check 'settings are stored, known keys only' ($r.Status -eq 200 -and $s.Json.theme -eq 'dark' -and $s.Json.sideOff -eq $true -and $s.Body -notmatch 'other') "(got $($s.Body))"
+    Check 'switches default to on' ($s.Json.timebox -eq $true -and $s.Json.autosave -eq $true -and $s.Json.checklist -eq $true -and $s.Json.nav -eq $true) "(got $($s.Body))"
+    $r = Invoke-Api PUT '/api/settings' '{"theme":"light","timebox":false,"checklist":false,"autosave":"no","nav":0}'
+    Check 'a switch is off only when sent as false' ($r.Json.timebox -eq $false -and $r.Json.checklist -eq $false -and $r.Json.autosave -eq $true -and $r.Json.nav -eq $true) "(got $($r.Body))"
     $r = Invoke-Api PUT '/api/settings' '{"theme":"../x","sideOff":"yes"}'
     Check 'a bad theme or sidebar value is stored as the default' ($r.Json.theme -eq '' -and $r.Json.sideOff -eq $false) "(got $($r.Body))"
     Check 'the settings file is not taken for a meeting' (@((Invoke-Api GET '/api/meetings').Json).Count -eq 2 -and (Test-Path (Join-Path $data 'settings\page.json')))
@@ -454,8 +457,9 @@ try {
         Check 'owner boxes use the suggestion list' ($dom -match '<datalist id="ownerList">' -and $appJs -match 'list="ownerList" aria-label="Owner"')
         Check 'an action line has no due date box' ($appJs -notmatch 'aria-label="Due"' -and $appJs -notmatch 'type="date" aria-label')
         Check 'menu has both Copy notes entries'   ($dom -match 'id="copyBtn"' -and $dom -match 'id="copyMdBtn"')
-        Check 'theme follows the system until one is picked' ($dom -match 'id="themeBtn"[^>]*>Theme: System<' -and $dom -notmatch '<html[^>]*data-theme')
-        Check 'theme list has 7 themes with System ticked' ((& $count 'role="menuitemradio"') -eq 7 -and $dom -match '<button[^>]*aria-checked="true"[^>]*>System</button>' -and (& $count 'aria-checked="true"') -eq 1 -and $dom -match 'id="themeList"[^>]*hidden') "(got $(& $count 'role="menuitemradio"'))"
+        Check 'theme follows the system until one is picked' ($dom -notmatch '<html[^>]*data-theme' -and $dom -notmatch 'id="themeBtn"')
+        Check 'settings page has 7 theme tiles with System picked' ((& $count 'class="theme-tile"') -eq 7 -and $dom -match '<button class="theme-tile" role="radio" data-theme="" aria-checked="true"' -and (& $count 'aria-checked="true"') -eq 1 -and $dom -match 'id="settingsView"[^>]*hidden') "(got $(& $count 'class="theme-tile"'))"
+        Check 'settings page has the five switches' ((& $count 'class="switch"') -eq 5 -and $dom -match 'id="settingsItem"' -and $dom -match 'id="settingsBtn"')
 
         # -------------------------------------------------------------------
         # Using the page: typing, Enter, clicks, save and reopen (tests\selftest.js)

@@ -66,8 +66,10 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
 While a meeting runs, a meeting that has been saved before is saved again automatically about 20
 seconds after you change it. Unsaved work is also kept as a draft in the browser and offered back
 if the page closes unexpectedly.
-Light and dark themes follow your system setting; Theme in the ... menu picks one for this browser
-(Light, Dark, Paper, Sky, Midnight or Forest).
+**Settings** (the gear button, or Settings in the ... menu): the theme (System follows your
+system setting; or Light, Dark, Paper, Sky, Midnight, Forest), the meetings sidebar, time boxing
+(switch it off for a plain agenda list with no minutes or timebox), autosave in Run, the
+facilitation checklist and the floating Sections button.
 
 ## Your data
 
@@ -78,7 +80,7 @@ Inside that folder the app also keeps:
 
 - `backups\` - a zip of every meeting, written each time the app starts (the newest 10 are kept)
 - `deleted\` - meetings you deleted; **Deleted meetings and backups** in the ... menu puts one back
-- `settings\page.json` - your theme and sidebar choice, so another browser starts the same way
+- `settings\page.json` - your settings, so another browser starts the same way
 
 If the same meeting is open in two tabs, the second save asks before it overwrites the first.
 

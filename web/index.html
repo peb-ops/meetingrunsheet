@@ -62,6 +62,7 @@
       </nav>
       <div class="toolbar">
         <button class="primary" id="saveBtn" title="Ctrl+S">Save</button>
+        <button class="icon" id="settingsBtn" aria-controls="settingsView" aria-expanded="false" title="Settings" aria-label="Settings">&#9881;</button>
         <div class="menu-wrap">
           <button class="icon" id="moreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="moreMenu" title="More">&#8943;</button>
           <div class="menu" id="moreMenu" role="menu" hidden>
@@ -74,9 +75,7 @@
             <button role="menuitem" id="restoreBtn" title="Adds meetings from a backup zip; never overwrites one you have">Restore from backup...</button>
             <button role="menuitem" id="binBtn" title="Put back a meeting you deleted, or meetings from a backup made when the app started">Deleted meetings and backups...</button>
             <hr>
-            <button role="menuitem" id="themeBtn" aria-expanded="false" aria-controls="themeList" title="System follows your Windows or browser setting">Theme: System</button>
-            <!-- One button per theme (setupTheme in app.js, from THEMES in theme.js) -->
-            <div class="theme-list" id="themeList" role="group" aria-label="Theme" hidden></div>
+            <button role="menuitem" id="settingsItem" title="Theme, sidebar, time boxing and more">Settings</button>
             <hr>
             <button role="menuitem" class="danger" id="deleteBtn" hidden>Delete meeting</button>
           </div>
@@ -84,6 +83,49 @@
         <input type="file" id="restoreFile" accept=".zip,application/zip" hidden>
       </div>
     </header>
+
+    <!-- Settings page: shown instead of the run sheet (setupSettings in app.js). Theme and switches
+         are kept in this browser and mirrored to settings\page.json (pushSettings). -->
+    <section class="settings" id="settingsView" aria-labelledby="setH" hidden>
+      <div class="settings-head">
+        <h2 id="setH">Settings</h2>
+        <button class="primary" id="setDone">Done</button>
+      </div>
+      <div class="card set-group">
+        <h3 class="set-title">Appearance</h3>
+        <div class="set-row set-col">
+          <span class="set-text"><b id="themeH">Theme</b><span class="hint">System follows your Windows or browser setting.</span></span>
+          <div class="theme-tiles" id="themeTiles" role="radiogroup" aria-labelledby="themeH"></div>
+        </div>
+        <label class="set-row" for="setSide">
+          <span class="set-text"><b>Meetings sidebar</b><span class="hint">The calendar and the meetings list on the left. The &#9776; button in the top bar shows or hides it too.</span></span>
+          <input type="checkbox" class="switch" id="setSide">
+        </label>
+      </div>
+      <div class="card set-group">
+        <h3 class="set-title">Agenda</h3>
+        <label class="set-row" for="setTimebox">
+          <span class="set-text"><b>Time boxing</b><span class="hint">Minutes per agenda item, the meeting timebox, start times and the checks that the agenda fits. Off: the agenda is a plain list and the timer counts up. Minutes already entered are kept.</span></span>
+          <input type="checkbox" class="switch" id="setTimebox">
+        </label>
+      </div>
+      <div class="card set-group">
+        <h3 class="set-title">During the meeting</h3>
+        <label class="set-row" for="setAutosave">
+          <span class="set-text"><b>Autosave in Run</b><span class="hint">A meeting that has been saved before is saved again 20 seconds after a change while it runs.</span></span>
+          <input type="checkbox" class="switch" id="setAutosave">
+        </label>
+        <label class="set-row" for="setChecklist">
+          <span class="set-text"><b>Facilitation checklist</b><span class="hint">The Before / During / After reminders beside the run sheet, and the Prep check before a meeting.</span></span>
+          <input type="checkbox" class="switch" id="setChecklist">
+        </label>
+        <label class="set-row" for="setNav">
+          <span class="set-text"><b>Sections button</b><span class="hint">The floating button in the corner for jumping between sections.</span></span>
+          <input type="checkbox" class="switch" id="setNav">
+        </label>
+      </div>
+      <p class="hint">Settings are kept in this browser and with your meetings, so another browser starts the same way.</p>
+    </section>
 
     <div class="card confirm" id="confirmBox" hidden>
       <span id="confirmMsg"></span>
@@ -146,7 +188,7 @@
         <div class="field chip"><label class="label" for="f-type">Type</label><select id="f-type"></select></div>
         <div class="field chip"><label class="label" for="f-date">Date</label><input id="f-date" type="date"></div>
         <div class="field chip short"><label class="label" for="f-time">Start</label><input id="f-time" type="time"></div>
-        <div class="field chip short"><label class="label" for="f-length">Timebox (min)</label><input id="f-length" type="number" min="5" step="5" placeholder="30"></div>
+        <div class="field chip short" id="lengthField"><label class="label" for="f-length">Timebox (min)</label><input id="f-length" type="number" min="5" step="5" placeholder="30"></div>
         <div class="field chip"><label class="label" for="f-notetaker" data-help="Taking notes stops you watching the room.">Note-taker</label><input id="f-notetaker" type="text" placeholder="Name"></div>
       </div>
       <div class="tip" id="typeTip"></div>
@@ -210,7 +252,7 @@
       </section>
 
       <!-- Checklist: filled in from PHASES in content.js; only the current phase's items show -->
-      <section class="card" aria-labelledby="chkH">
+      <section class="card" id="chkCard" aria-labelledby="chkH">
         <h2 id="chkH" class="card-title">Facilitation checklist</h2>
         <div class="phases" id="phases"></div>
       </section>
