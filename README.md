@@ -110,8 +110,8 @@ The tests start their own server on port 8199 with a temporary data folder, so y
 never touched. If Microsoft Edge is installed they also check the page renders and use it the
 way a person would (typing, Enter, clicks, save and reopen) from a temporary copy on port 8200.
 The last part loads a mock meeting (`tests\mock-meeting.json`), checks its Copy notes and prints
-them, and copies it to `test-data\` so it can be opened with `-DataDir .	est-data`.
+them, and copies it to `test-data\` so it can be opened with `-DataDir .\test-data`.
 
 GitHub Actions runs the same tests on Windows PowerShell 5.1 on every push and pull request
-(`.github\workflows	ests.yml`). Each run's page on the Actions tab shows the pass/fail count, any
+(`.github\workflows\tests.yml`). Each run's page on the Actions tab shows the pass/fail count, any
 failed checks and the mock meeting's notes; the full console output is attached as `test-output`.
