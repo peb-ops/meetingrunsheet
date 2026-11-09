@@ -240,6 +240,8 @@ input.switch:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .no-timebox .sheet[data-phase="run"] .agenda-table td.n{border-left:1px solid var(--line);border-radius:10px 0 0 10px}
 .no-timebox .sheet[data-phase="run"] .agenda-table tr.now td.n{border-left:2px solid var(--accent)}
 .no-checklist #chkCard,.no-checklist #rPrep{display:none}
+/* In Run the side column holds only the checklist: without it the agenda takes the full width */
+.no-checklist .sheet[data-phase="run"] .col-side{display:none}
 .no-nav .jump{display:none}
 .confirm{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
 

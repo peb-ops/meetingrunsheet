@@ -192,6 +192,12 @@
     check("time boxing off hides the minutes and the timebox", !shown("#lengthField") && !shown("#agendaRows td.min")
       && agendaItems().every(it => it.min === null) && $("#rAgenda").textContent.includes("item"));
     check("checklist off hides the checklist and the prep check", !shown("#chkCard") && !shown("#rPrep"));
+    const was = phase;
+    setPhase("run");
+    const runSide = shown(".col-side");
+    setPhase("plan");
+    check("checklist off gives the agenda the full width in Run, Plan keeps its side column", !runSide && shown(".col-side"));
+    setPhase(was);
     await wait(300);
     const s = await api("GET", "/api/settings");
     check("the settings are stored with the meetings", s.sideOff === true && s.theme === "dark" && document.documentElement.dataset.theme === "dark"
