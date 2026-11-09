@@ -51,8 +51,9 @@ The page opens at <http://localhost:8080>. Stop the server with Ctrl+C in its wi
   to the original, and shows what was decided last time while you plan.
 - **Repeat weekly** (the ... menu): plans a saved meeting again for the coming weeks. The brief of
   each one shows its place in the series, with links to the previous and next meeting.
-- **Copy notes:** a plain-text summary ready to paste into chat or email, or the same notes as
-  Markdown for a wiki, Confluence or GitHub. **Print or save as PDF** prints the summary.
+- **Copy notes:** the notes item by item (each agenda item with its decision, notes and action
+  points), then other decisions and the parking lot. Pastes formatted into Teams, Outlook or Word
+  and as plain text elsewhere; or copy the same notes as Markdown for a wiki, Confluence or GitHub. **Print or save as PDF** prints the summary.
 - **Backup** (the ... menu): download every meeting as a zip, and restore from a backup zip (adds
   missing meetings, never overwrites one you have). A backup zip is also written on every start.
 - **Deleted meetings and backups** (the ... menu): put a deleted meeting back, or restore the

@@ -1241,50 +1241,74 @@ async function deleteMeeting() {
 
 /* ---- Copy notes (summary for Slack or email; as Markdown for a wiki, Confluence or GitHub) ---- */
 
-// Plain text by default. With md, the same notes as Markdown: headings and bold labels.
-function notes(md) {
+// The notes as an outline, in meeting order: each agenda item with its decision, notes and action
+// points, then what belongs to no item. notes() renders it as plain text, Markdown or HTML.
+// A section is { head, parts }; a part is { label, text } (one line) or { label, list } (bullets).
+function notesOutline() {
   const f = state.fields;
   const lines = s => (s || "").split("\n").map(x => x.trim()).filter(Boolean);
-  const bullets = arr => arr.map(x => "- " + x).join("\n");
-  const gap = md ? "\n" : "";   // Markdown needs an empty line between paragraphs
-  const label = text => md ? `**${text}:**` : `${text}:`;
-  const section = (name, body) => `${md ? "## " + name : "\n" + name.toUpperCase()}\n${gap}${body}\n${gap}`;
-
-  let o = `${md ? "# " : ""}${f.title || "Meeting notes"}\n${gap}`;
-  o += [f.date, f.time, typeName(f.type), f.length ? f.length + " min" : ""].filter(Boolean).join(" \u00b7 ") + "\n\n";
-  if (f.goal) o += `${label("Goal")} ${f.goal}\n${gap}`;
-  const people = attendeesToSave();
-  if (people.length) o += `${label("Attendees")} ${people.join(", ")}\n${gap}`;
-
-  // Decisions made on agenda items come first, each with its item (an item marked left open says
-  // so), then the ones that belong to no item.
-  const items = agendaToSave();
-  const decisions = items.filter(r => r.d || r.nd).map(r => `${r.t}: ${r.d || "left open, no decision made"}`).concat(lines(f.decisions));
-  o += section("Decisions", decisions.length ? bullets(decisions) : "- None recorded");
-
   const acts = state.actions.filter(a => a.a && a.a.trim());
-  const status = a => {
-    const text = a.done ? "done" : a.carried ? "carried to follow-up" : "";
-    return !text ? "" : md ? `**${text[0].toUpperCase()}${text.slice(1)}:** ` : `[${text}] `;
-  };
   // A due date, a ticket and the done / carried status only exist in files from before v1.23.0.
+  const status = a => a.done ? "[done] " : a.carried ? "[carried to follow-up] " : "";
   const older = a => [a.d ? "Due: " + a.d : "", (a.t || "").trim()].filter(Boolean).map(x => ", " + x).join("");
   const actText = a => `${status(a)}${a.a} (Owner: ${a.o || "UNASSIGNED"}${older(a)})`;
-  // Under their agenda item where they have one (then "Other"); a plain list when none do.
-  const groups = items.map(r => [r.t, acts.filter(a => a.g === r.id)]).filter(([, list]) => list.length);
-  const loose = acts.filter(a => !items.some(r => r.id === a.g));
-  if (groups.length && loose.length) groups.push(["Other", loose]);
-  o += section("Actions", !acts.length ? "- None" : !groups.length ? bullets(acts.map(actText))
-    : groups.map(([name, list]) => `${md ? `**${name}**` : name}\n${gap}${bullets(list.map(actText))}`).join("\n" + gap));
 
-  const discussed = items.filter(r => r.n).map(r => `${md ? `**${r.t}**` : r.t}\n${gap}${bullets(lines(r.n))}`);
-  if (discussed.length) o += section("Discussion", discussed.join("\n" + gap));
+  const items = agendaToSave();
+  const sections = items.map((r, i) => {
+    const parts = [];
+    if (r.d || r.nd) parts.push({ label: "Decision", text: r.d || "Left open, no decision made" });
+    const said = lines(r.n);
+    if (said.length) parts.push({ label: "Notes", list: said });
+    const mine = acts.filter(a => a.g === r.id).map(actText);
+    if (mine.length) parts.push({ label: "Action points", list: mine });
+    return { head: `${i + 1}. ${r.t}${r.m ? ` (${r.m} min)` : ""}`, parts };
+  });
+  const tail = (head, list) => { if (list.length) sections.push({ head, parts: [{ list }] }); };
+  tail("Other decisions", lines(f.decisions));
+  tail("Action points with no agenda item", acts.filter(a => !items.some(r => r.id === a.g)).map(actText));
+  tail("Parking lot", lines(f.parking));
 
-  const parking = lines(f.parking);
-  if (parking.length) o += section("Parking lot", bullets(parking));
-  return o.trimEnd() + "\n";
+  const intro = [];
+  if (f.goal) intro.push({ label: "Goal", text: f.goal });
+  const people = attendeesToSave();
+  if (people.length) intro.push({ label: "Attendees", text: people.join(", ") });
+  return {
+    title: f.title || "Meeting notes",
+    meta: [f.date, f.time, typeName(f.type), f.length ? f.length + " min" : ""].filter(Boolean).join(" \u00b7 "),
+    intro,
+    sections,
+  };
 }
 
+// format: false / "text" = plain text (blank lines between items), true / "md" = Markdown, "html" = HTML
+// for pasting into Teams, Outlook or Word (headings, bold labels and real bullet lists).
+function notes(format) {
+  const o = notesOutline();
+  if (format === "html") {
+    const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const part = p => p.list
+      ? (p.label ? `<p><b>${esc(p.label)}:</b></p>` : "") + `<ul>${p.list.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`
+      : `<p><b>${esc(p.label)}:</b> ${esc(p.text)}</p>`;
+    return `<h2>${esc(o.title)}</h2>` + (o.meta ? `<p>${esc(o.meta)}</p>` : "") + o.intro.map(part).join("")
+      + o.sections.map(s => `<h3>${esc(s.head)}</h3>` + s.parts.map(part).join("")).join("");
+  }
+  const md = format === true || format === "md";
+  const label = t => md ? `**${t}:**` : `${t}:`;
+  const block = p => p.list
+    ? (p.label ? label(p.label) + (md ? "\n\n" : "\n") : "") + p.list.map(x => "- " + x).join("\n")
+    : `${label(p.label)} ${p.text}`;
+  const join = md ? "\n\n" : "\n";   // Markdown needs an empty line between paragraphs
+  let t = (md ? "# " : "") + o.title + "\n" + (md ? "\n" : "") + (o.meta ? o.meta + "\n" : "");
+  if (o.intro.length) t += "\n" + o.intro.map(block).join(join) + "\n";
+  o.sections.forEach(s => {
+    t += "\n" + (md ? "## " : "") + s.head + "\n" + (md ? "\n" : "");
+    if (s.parts.length) t += s.parts.map(block).join("\n\n") + "\n";
+  });
+  return t.trimEnd() + "\n";
+}
+
+// Plain Copy notes puts both plain text and HTML on the clipboard, so Teams, Outlook and Word paste
+// it formatted and plain-text places (Slack, a text editor) get the text version.
 function copyNotes(md) {
   const txt = notes(md);
   const box = $("#fallbackBox");
@@ -1294,9 +1318,16 @@ function copyNotes(md) {
     box.hidden = false;
     area.select();
   };
+  const done = () => toast(md ? "Notes copied as Markdown." : "Notes copied. Paste them into Teams, Slack or email.");
   box.hidden = true;
   try {
-    navigator.clipboard.writeText(txt).then(() => toast(md ? "Notes copied as Markdown." : "Notes copied. Paste them into Slack or email."), fallback);
+    if (!md && window.ClipboardItem && navigator.clipboard.write) {
+      const blob = (s, type) => new Blob([s], { type });
+      navigator.clipboard.write([new ClipboardItem({ "text/plain": blob(txt, "text/plain"), "text/html": blob(notes("html"), "text/html") })])
+        .then(done, () => navigator.clipboard.writeText(txt).then(done, fallback));
+    } else {
+      navigator.clipboard.writeText(txt).then(done, fallback);
+    }
   } catch (e) {
     fallback();
   }

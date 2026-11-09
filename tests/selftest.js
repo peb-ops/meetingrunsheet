@@ -76,8 +76,14 @@
       && sum.includes("Bo") && sum.includes("Other decisions") && sum.includes("Move the playtest") && sum.includes("Remapping"));
     check("the print heading names the meeting", $("#printHead").textContent.includes("Self test") && $("#printHead").textContent.includes("Ana, Bo"));
     const text = notes(false);
-    check("Copy notes has decisions, the left open item and the action", text.includes("First item: Ship it") && text.includes("Second item: left open")
-      && text.includes("Move the playtest") && text.includes("Write it up (Owner: Bo)") && !text.includes("Due:"));
+    const at = s => text.indexOf(s);
+    check("Copy notes goes item by item: decision then action, then the next item", at("1. First item (10 min)") >= 0
+      && at("1. First item") < at("Decision: Ship it") && at("Decision: Ship it") < at("Write it up (Owner: Bo)")
+      && at("Write it up (Owner: Bo)") < at("2. Second item") && at("2. Second item") < at("Left open")
+      && at("Left open") < at("Other decisions") && at("Move the playtest") > at("Other decisions") && !text.includes("Due:"));
+    const html = notes("html");
+    check("Copy notes as HTML has a heading per item and bullet lists", html.includes("<h3>1. First item (10 min)</h3>")
+      && html.includes("<li>Write it up (Owner: Bo)</li>") && html.includes("<b>Decision:</b> Ship it"));
 
     // Removing an agenda item leaves its action under "Actions with no agenda item", still editable.
     setPhase("run");
